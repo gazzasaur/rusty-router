@@ -7,18 +7,18 @@ I chose to implement a router as I have a passion for Routing Protocols.  Routin
 
 ### Road-map
 * IPv4
-** OSPFv2
-** OSPFv2 Physical Interface
-** OSPFv2 Virtual Interface
-** OSPFv2 Testing Platform
-** Management Console
-** BGPv4
-** LDP (MPLS)
-** RSVP-TE (MPLS)
+  * OSPFv2
+  * OSPFv2 Physical Interface
+  * OSPFv2 Virtual Interface
+  * OSPFv2 Testing Platform
+  * Management Console
+  * BGPv4
+  * LDP (MPLS)
+  * RSVP-TE (MPLS)
 * IPv6
-** OSPFv3
-** BGPv4
-** LDP (MPLS)
-** RSVP-TE (MPLS)
+  * OSPFv3
+  * BGPv4
+  * LDP (MPLS)
+  * RSVP-TE (MPLS)
 * Other
-** IS-IS
+  * IS-IS
