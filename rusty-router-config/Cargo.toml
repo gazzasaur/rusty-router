@@ -1,5 +1,5 @@
 [package]
-name = "rusty-router"
+name = "rusty-router-config"
 version = "0.1.0"
 authors = ["gazzasaur"]
 edition = "2018"

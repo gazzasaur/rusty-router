@@ -2,4 +2,5 @@
 
 members = [
     "rusty-router",
+    "rusty-router-config",
 ]
