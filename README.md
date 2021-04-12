@@ -7,10 +7,12 @@ I chose to implement a router as I have a passion for Routing Protocols.  Routin
 
 ### Road-map
 * IPv4
+  * Virtal Route Table (Static Routes)
+  * Forward Table Interface
   * OSPFv2
   * OSPFv2 Physical Interface
   * OSPFv2 Virtual Interface
-  * OSPFv2 Testing Platform
+  * OSPFv2 Testing Platform (most likely with Quagga interop testing)
   * Management Console
   * BGPv4
   * LDP (MPLS)
