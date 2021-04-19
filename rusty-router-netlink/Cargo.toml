@@ -1,13 +1,14 @@
 [package]
-name = "rusty-router"
+name = "rusty-router-netlink"
 version = "0.1.0"
 authors = ["gazzasaur"]
 edition = "2018"
 
 [dependencies]
+log = "0.4"
+
 rtnetlink = "0.7"
 netlink-sys = "0.6"
 netlink-packet-core = "0.2"
 netlink-packet-route = "0.7"
 rusty-router-model = { path = "../rusty-router-model" }
-rusty-router-netlink = { path = "../rusty-router-netlink" }
