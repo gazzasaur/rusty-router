@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use serde::{Serialize, Deserialize};
 
 #[derive(Serialize, Deserialize, Debug)]
-pub struct RustyRouter {
+pub struct Router {
     interfaces: HashMap<String, Interface>,
     switch: HashMap<String, Switch>,
     vrf: HashMap<String, Vrf>,
@@ -72,7 +72,7 @@ mod tests {
 
     #[test]
     fn it_parses_config() {
-        let config = RustyRouter {
+        let config = Router {
             interfaces: HashMap::from_iter(vec![("red1".to_string(), Interface {
                 device: "eth0".to_string(),
                 interface_type: InterfaceType::Ethernet,

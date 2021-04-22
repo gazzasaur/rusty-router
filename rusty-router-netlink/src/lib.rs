@@ -1,84 +1,30 @@
-use mockall::*;
-use mockall::predicate::*;
-
 use std::error::Error;
 use std::collections::HashMap;
 
 use log::warn;
 
-use netlink_sys;
 use netlink_packet_core;
 use netlink_packet_route;
-use netlink_sys::protocols;
 use netlink_packet_route::constants;
 use netlink_packet_route::rtnl::link::nlas;
 
 use rusty_router_model;
-use rusty_router_model::DeviceInterface;
+use rusty_router_model::RustyRouter;
 
-#[automock]
-pub trait NetlinkSocket {
-    fn send_message(&self, message: netlink_packet_core::NetlinkMessage<netlink_packet_route::RtnlMessage>) -> Result<Vec<netlink_packet_core::NetlinkMessage<netlink_packet_route::RtnlMessage>>, Box<dyn Error>>;
-}
+pub mod socket;
+use self::socket::*;
 
-pub struct DefaultNetlinkSocket {
-    socket: netlink_sys::Socket,
-}
-
-impl DefaultNetlinkSocket {
-    pub fn new() -> Result<DefaultNetlinkSocket, Box<dyn Error>> {
-        let mut socket = netlink_sys::Socket::new(protocols::NETLINK_ROUTE)?;
-        socket.bind_auto()?;
-        socket.connect(&netlink_sys::SocketAddr::new(0, 0))?;
-        Ok(DefaultNetlinkSocket { socket })
-    }
-}
-
-impl NetlinkSocket for DefaultNetlinkSocket {
-    fn send_message(&self, message: netlink_packet_core::NetlinkMessage<netlink_packet_route::RtnlMessage>) -> Result<Vec<netlink_packet_core::NetlinkMessage<netlink_packet_route::RtnlMessage>>, Box<dyn Error>> {
-        let mut buf = vec![0; message.header.length as usize];
-        message.serialize(&mut buf[..]);
-        self.socket.send(&buf[..], 0)?;
-
-        let mut offset = 0;
-        let mut receive_buffer = vec![0; 4096];
-        let mut received_messages = Vec::new();
-
-        loop {
-            let size = self.socket.recv(&mut receive_buffer[..], 0)?;
-
-            loop {
-                let bytes = &receive_buffer[offset..];
-                let rx_packet: netlink_packet_core::NetlinkMessage<netlink_packet_route::RtnlMessage> = netlink_packet_route::NetlinkMessage::deserialize(bytes)?;
-                let header_length = rx_packet.header.length as usize;
-
-                if rx_packet.payload == netlink_packet_core::NetlinkPayload::Done {
-                    return Ok(received_messages);
-                }
-
-                received_messages.push(rx_packet);
-
-                offset += header_length;
-                if offset == size || header_length == 0 {
-                    offset = 0;
-                    break;
-                }
-            }
-        }
-    }
-}
-
-pub struct Netlink {
+pub struct NetlinkRustyRouter {
     netlink_socket: Box<dyn NetlinkSocket>,
 }
 
-impl Netlink {
-    pub fn new(netlink_socket: Box<dyn NetlinkSocket>) -> Netlink {
-        Netlink { netlink_socket }
+impl NetlinkRustyRouter {
+    pub fn new(netlink_socket: Box<dyn NetlinkSocket>) -> NetlinkRustyRouter {
+        NetlinkRustyRouter { netlink_socket }
     }
 }
 
-impl DeviceInterface for Netlink {
+impl RustyRouter for NetlinkRustyRouter {
     fn list_interfaces(&self) -> Result<Vec<rusty_router_model::Interface>, Box<dyn Error>> {
         let mut packet = netlink_packet_core::NetlinkMessage {
             header: netlink_packet_core::NetlinkHeader::default(),
@@ -150,6 +96,6 @@ mod tests {
         mock.expect_send_message().returning(|_| {
             Ok(vec![])
         });
-        assert!(Netlink::new(Box::new(mock)).list_interfaces().unwrap().len() == 0);
+        assert!(NetlinkRustyRouter::new(Box::new(mock)).list_interfaces().unwrap().len() == 0);
     }
 }
