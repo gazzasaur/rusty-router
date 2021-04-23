@@ -19,8 +19,8 @@ impl NetlinkRustyRouter {
 }
 
 impl RustyRouter for NetlinkRustyRouter {
-    fn list_interfaces(&self) -> Result<Vec<rusty_router_model::Interface>, Box<dyn Error>> {
-        self.link_module.list_interfaces(&self.netlink_socket)
+    fn list_network_interfaces(&self) -> Result<Vec<rusty_router_model::NetworkInterface>, Box<dyn Error>> {
+        self.link_module.list_network_interfaces(&self.netlink_socket)
     }
 }
 
@@ -34,6 +34,6 @@ mod tests {
         mock.expect_send_message().returning(|_| {
             Ok(vec![])
         });
-        assert!(NetlinkRustyRouter::new(Box::new(mock)).list_interfaces().unwrap().len() == 0);
+        assert!(NetlinkRustyRouter::new(Box::new(mock)).list_network_interfaces().unwrap().len() == 0);
     }
 }

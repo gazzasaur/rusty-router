@@ -1,6 +1,6 @@
 use std::error::Error;
-use crate::model::Interface;
+use crate::model::NetworkInterface;
 
 pub trait RustyRouter {
-    fn list_interfaces(&self) -> Result<Vec<Interface>, Box<dyn Error>>;
+    fn list_network_interfaces(&self) -> Result<Vec<NetworkInterface>, Box<dyn Error>>;
 }

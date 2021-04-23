@@ -3,29 +3,19 @@ use serde::{Serialize, Deserialize};
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Router {
-    interfaces: HashMap<String, Interface>,
-    switch: HashMap<String, Switch>,
+    network_interfaces: HashMap<String, NetworkInterface>,
     vrf: HashMap<String, Vrf>,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
-pub struct Interface {
+pub struct NetworkInterface {
     pub device: String,
-    pub interface_type: InterfaceType,
+    pub network_interface_type: NetworkInterfaceType,
 }
 
 #[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Hash)]
-pub enum InterfaceType {
-    VirtualEthernetUnassigned,
-    VirtualEthernet(String),
-    VLAN(u64),
-    Ethernet,
-    Bridge,
-}
-
-#[derive(Serialize, Deserialize, Debug)]
-pub struct Switch {
-    interfaces: Vec<String>
+pub enum NetworkInterfaceType {
+    GenericInterface,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -49,7 +39,7 @@ pub enum RouteSource {
 #[derive(Serialize, Deserialize, Debug)]
 pub struct StaticRoute {
     prefix: IpPrefix,
-    next_hop: NetworkInterface,
+    next_hop: NextHop,
     metric: u64,
 }
 
@@ -60,7 +50,7 @@ pub enum IpPrefix {
 }
 
 #[derive(Serialize, Deserialize, Debug)]
-pub enum NetworkInterface {
+pub enum NextHop {
     IpV4(String),
     IpV6(String),
 }
@@ -73,23 +63,20 @@ mod tests {
     #[test]
     fn it_parses_config() {
         let config = Router {
-            interfaces: HashMap::from_iter(vec![("red1".to_string(), Interface {
+            network_interfaces: HashMap::from_iter(vec![("red1".to_string(), NetworkInterface {
                 device: "eth0".to_string(),
-                interface_type: InterfaceType::Ethernet,
-            })]),
-            switch: HashMap::from_iter(vec![("red_leader".to_string(), Switch {
-                interfaces: vec!["eth0".to_string()],
+                network_interface_type: NetworkInterfaceType::GenericInterface,
             })]),
             vrf: HashMap::from_iter(vec![("Blue".to_string(), Vrf {
                 vrf_type: VrfTable::VirtualTable(10),
                 priority: HashMap::from_iter(vec![(RouteSource::Static, 10)].drain(..)),
                 static_routes: vec![StaticRoute {
                     prefix: IpPrefix::IpV4("172.0.0.0".to_string(), 16),
-                    next_hop: NetworkInterface::IpV4("10.10.10.10".to_string()),
+                    next_hop: NextHop::IpV4("10.10.10.10".to_string()),
                     metric: 100,
                 }],
             })].drain(..)),
         };
-        assert_eq!("{\"interfaces\":{\"red1\":{\"device\":\"eth0\",\"interface_type\":\"Ethernet\"}},\"switch\":{\"red_leader\":{\"interfaces\":[\"eth0\"]}},\"vrf\":{\"Blue\":{\"vrf_type\":{\"VirtualTable\":10},\"priority\":{\"Static\":10},\"static_routes\":[{\"prefix\":{\"IpV4\":[\"172.0.0.0\",16]},\"next_hop\":{\"IpV4\":\"10.10.10.10\"},\"metric\":100}]}}}", serde_json::to_string(&config).unwrap());
+        assert_eq!("{\"network_interfaces\":{\"red1\":{\"device\":\"eth0\",\"network_interface_type\":\"GenericInterface\"}},\"vrf\":{\"Blue\":{\"vrf_type\":{\"VirtualTable\":10},\"priority\":{\"Static\":10},\"static_routes\":[{\"prefix\":{\"IpV4\":[\"172.0.0.0\",16]},\"next_hop\":{\"IpV4\":\"10.10.10.10\"},\"metric\":100}]}}}", serde_json::to_string(&config).unwrap());
     }
 }
