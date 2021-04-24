@@ -8,4 +8,10 @@ fn main() {
             println!("{}", output);
         }
     }
+
+    if let Ok(interfaces) = nl.list_router_interfaces() {
+        if let Ok(output) = serde_json::to_string_pretty(&interfaces) {
+            println!("{}", output);
+        }
+    }
 }

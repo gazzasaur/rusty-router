@@ -11,21 +11,21 @@ use rusty_router_model;
 
 use crate::socket::NetlinkSocket;
 
-pub struct NetlinkRustyRouterLink {}
+pub struct NetlinkRustyRouterAddress {}
 
-impl NetlinkRustyRouterLink {
-    pub fn new() -> NetlinkRustyRouterLink {
-        NetlinkRustyRouterLink {}
+impl NetlinkRustyRouterAddress {
+    pub fn new() -> NetlinkRustyRouterAddress {
+        NetlinkRustyRouterAddress {}
     }
 
-    pub fn list_network_interfaces(&self, socket: &Box<dyn NetlinkSocket>) -> Result<Vec<rusty_router_model::NetworkInterface>, Box<dyn Error>> {
-        let link_message = netlink_packet_route::RtnlMessage::GetLink(netlink_packet_route::LinkMessage::default());
+    pub fn list_router_interfaces(&self, socket: &Box<dyn NetlinkSocket>) -> Result<Vec<rusty_router_model::RouterInterface>, Box<dyn Error>> {
+        let link_message = netlink_packet_route::RtnlMessage::GetAddress(netlink_packet_route::AddressMessage::default());
         let packet: netlink_packet_core::NetlinkMessage<netlink_packet_route::RtnlMessage> = self.build_default_packet(link_message);
         let messages = socket.send_message(packet)?;
 
-        let mut result: Vec<rusty_router_model::NetworkInterface> = Vec::new();
+        let mut result: Vec<rusty_router_model::RouterInterface> = Vec::new();
         for message in messages {
-            self.process_link_message(message).into_iter().for_each(|iface| result.push(iface));
+            self.process_address_message(message).into_iter().for_each(|iface| result.push(iface));
         }
         Ok(result)
     }
@@ -42,25 +42,24 @@ impl NetlinkRustyRouterLink {
         return packet;
     }
 
-    fn process_link_message(&self, message: netlink_packet_core::NetlinkMessage<netlink_packet_route::RtnlMessage>) -> Option<rusty_router_model::NetworkInterface> {
-        let mut name: Option<String> = None;
+    fn process_address_message(&self, message: netlink_packet_core::NetlinkMessage<netlink_packet_route::RtnlMessage>) -> Option<rusty_router_model::RouterInterface> {
+        let mut _name: Option<String> = None;
 
         if let netlink_packet_core::NetlinkPayload::InnerMessage(netlink_packet_route::RtnlMessage::NewLink(msg)) = message.payload {
             for attribute in msg.nlas.iter() {
                 if let nlas::Nla::IfName(ifname) = attribute {
-                    name = Some(ifname.clone())
+                    _name = Some(ifname.clone())
                 }
             }
         } else {
             warn!("Netlink data does not contain a payload: {:?}", message)
         }
 
-        if let Some(ifname) = name {
-            return Some(rusty_router_model::NetworkInterface {
-                device: ifname,
-                network_interface_type: rusty_router_model::NetworkInterfaceType::GenericInterface,
-            });
-        }
+        // if let Some(ifname) = name {
+        //     return Some(rusty_router_model::RouterInterface {
+                
+        //     });
+        // }
         None
     }
 }
