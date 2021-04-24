@@ -6,6 +6,7 @@ edition = "2018"
 
 [dependencies]
 rtnetlink = "0.7"
+serde_json = "1.0"
 netlink-sys = "0.6"
 netlink-packet-core = "0.2"
 netlink-packet-route = "0.7"
