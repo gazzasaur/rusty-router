@@ -23,6 +23,8 @@ impl NetlinkRustyRouterAddress {
         let packet: netlink_packet_core::NetlinkMessage<netlink_packet_route::RtnlMessage> = self.build_default_packet(link_message);
         let messages = socket.send_message(packet)?;
 
+        println!("{:?}", messages);
+
         let mut result: Vec<rusty_router_model::RouterInterface> = Vec::new();
         for message in messages {
             self.process_address_message(message).into_iter().for_each(|iface| result.push(iface));
@@ -55,11 +57,19 @@ impl NetlinkRustyRouterAddress {
             warn!("Netlink data does not contain a payload: {:?}", message)
         }
 
-        // if let Some(ifname) = name {
+        // let iface_parts = name.and_then(|n| {
+        //     let split_name = n.split(":");
+        //     Some(split_name.next())
+        // });
+        // if let Some(ifname) = name.and_then( {
+
+
         //     return Some(rusty_router_model::RouterInterface {
                 
         //     });
         // }
         None
     }
+
+    // fn parse_interface(&self, raw_address_interface) -> Option<rusty_router_model::RouterInterface> 
 }
