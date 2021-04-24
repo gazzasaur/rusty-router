@@ -2,6 +2,16 @@ use serde_json;
 use rusty_router_model::RustyRouter;
 
 fn main() {
+    let s = "hello:0:there::moo".to_string();
+    let mut iface = s.split(':');
+
+    let a = iface.next();
+    let b: Vec<String> = iface.map(|x| x.to_string()).collect();
+
+    println!("{:?}", a);
+    println!("{:?}", b.join(":"));
+
+
     let nl = rusty_router_netlink::NetlinkRustyRouter::new(Box::new(rusty_router_netlink::socket::DefaultNetlinkSocket::new().unwrap()));
     if let Ok(interfaces) = nl.list_network_interfaces() {
         if let Ok(output) = serde_json::to_string_pretty(&interfaces) {
