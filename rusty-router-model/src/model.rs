@@ -21,14 +21,30 @@ pub enum NetworkInterfaceType {
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Vrf {
     vrf_type: VrfTable,
-    priority: HashMap<RouteSource, u64>,
+    router_interfaces: Vec<RouterInterface>,
     static_routes: Vec<StaticRoute>,
+    priority: HashMap<RouteSource, u64>,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
 pub enum VrfTable {
     Base,
     VirtualTable(u64),
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct RouterInterface {
+    network_interface: String,
+    router_interface_index: RouterInterfaceIndex,
+
+    ip_v4: IpV4Address,
+    ip_v6: IpV6Address,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub enum RouterInterfaceIndex {
+    Base,
+    Index(u64),
 }
 
 #[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Hash)]
@@ -42,6 +58,12 @@ pub struct StaticRoute {
     next_hop: NextHop,
     metric: u64,
 }
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct IpV4Address (String, u64);
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct IpV6Address (String, u64);
 
 #[derive(Serialize, Deserialize, Debug)]
 pub enum IpPrefix {
@@ -69,14 +91,21 @@ mod tests {
             })]),
             vrf: HashMap::from_iter(vec![("Blue".to_string(), Vrf {
                 vrf_type: VrfTable::VirtualTable(10),
-                priority: HashMap::from_iter(vec![(RouteSource::Static, 10)].drain(..)),
+                router_interfaces: vec![RouterInterface {
+                    network_interface: "lo".to_string(),
+                    router_interface_index: RouterInterfaceIndex::Index(0),
+
+                    ip_v4: IpV4Address("192.168.0.1".to_string(), 32),
+                    ip_v6: IpV6Address("::1".to_string(), 128),
+                }],
                 static_routes: vec![StaticRoute {
                     prefix: IpPrefix::IpV4("172.0.0.0".to_string(), 16),
                     next_hop: NextHop::IpV4("10.10.10.10".to_string()),
                     metric: 100,
                 }],
+                priority: HashMap::from_iter(vec![(RouteSource::Static, 10)].drain(..)),
             })].drain(..)),
         };
-        assert_eq!("{\"network_interfaces\":{\"red1\":{\"device\":\"eth0\",\"network_interface_type\":\"GenericInterface\"}},\"vrf\":{\"Blue\":{\"vrf_type\":{\"VirtualTable\":10},\"priority\":{\"Static\":10},\"static_routes\":[{\"prefix\":{\"IpV4\":[\"172.0.0.0\",16]},\"next_hop\":{\"IpV4\":\"10.10.10.10\"},\"metric\":100}]}}}", serde_json::to_string(&config).unwrap());
+        assert_eq!("{\"network_interfaces\":{\"red1\":{\"device\":\"eth0\",\"network_interface_type\":\"GenericInterface\"}},\"vrf\":{\"Blue\":{\"vrf_type\":{\"VirtualTable\":10},\"router_interfaces\":[{\"network_interface\":\"lo\",\"router_interface_index\":{\"Index\":0},\"ip_v4\":[\"192.168.0.1\",32],\"ip_v6\":[\"::1\",128]}],\"static_routes\":[{\"prefix\":{\"IpV4\":[\"172.0.0.0\",16]},\"next_hop\":{\"IpV4\":\"10.10.10.10\"},\"metric\":100}],\"priority\":{\"Static\":10}}}}", serde_json::to_string(&config).unwrap());
     }
 }
