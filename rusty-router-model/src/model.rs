@@ -35,16 +35,16 @@ pub enum VrfTable {
 #[derive(Serialize, Deserialize, Debug)]
 pub struct RouterInterface {
     network_interface: String,
-    router_interface_index: RouterInterfaceIndex,
+    router_interface_type: RouterInterfaceType,
 
     ip_v4: IpV4Address,
     ip_v6: IpV6Address,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
-pub enum RouterInterfaceIndex {
+pub enum RouterInterfaceType {
     Base,
-    Index(u64),
+    Subinterface(u64),
 }
 
 #[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Hash)]
@@ -93,7 +93,7 @@ mod tests {
                 vrf_type: VrfTable::VirtualTable(10),
                 router_interfaces: vec![RouterInterface {
                     network_interface: "lo".to_string(),
-                    router_interface_index: RouterInterfaceIndex::Index(0),
+                    router_interface_type: RouterInterfaceType::Subinterface(0),
 
                     ip_v4: IpV4Address("192.168.0.1".to_string(), 32),
                     ip_v6: IpV6Address("::1".to_string(), 128),
@@ -106,6 +106,6 @@ mod tests {
                 priority: HashMap::from_iter(vec![(RouteSource::Static, 10)].drain(..)),
             })].drain(..)),
         };
-        assert_eq!("{\"network_interfaces\":{\"red1\":{\"device\":\"eth0\",\"network_interface_type\":\"GenericInterface\"}},\"vrf\":{\"Blue\":{\"vrf_type\":{\"VirtualTable\":10},\"router_interfaces\":[{\"network_interface\":\"lo\",\"router_interface_index\":{\"Index\":0},\"ip_v4\":[\"192.168.0.1\",32],\"ip_v6\":[\"::1\",128]}],\"static_routes\":[{\"prefix\":{\"IpV4\":[\"172.0.0.0\",16]},\"next_hop\":{\"IpV4\":\"10.10.10.10\"},\"metric\":100}],\"priority\":{\"Static\":10}}}}", serde_json::to_string(&config).unwrap());
+        assert_eq!("{\"network_interfaces\":{\"red1\":{\"device\":\"eth0\",\"network_interface_type\":\"GenericInterface\"}},\"vrf\":{\"Blue\":{\"vrf_type\":{\"VirtualTable\":10},\"router_interfaces\":[{\"network_interface\":\"lo\",\"router_interface_type\":{\"Subinterface\":0},\"ip_v4\":[\"192.168.0.1\",32],\"ip_v6\":[\"::1\",128]}],\"static_routes\":[{\"prefix\":{\"IpV4\":[\"172.0.0.0\",16]},\"next_hop\":{\"IpV4\":\"10.10.10.10\"},\"metric\":100}],\"priority\":{\"Static\":10}}}}", serde_json::to_string(&config).unwrap());
     }
 }
