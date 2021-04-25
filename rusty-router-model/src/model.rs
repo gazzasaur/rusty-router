@@ -34,9 +34,8 @@ pub enum VrfTable {
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct RouterInterface {
-    network_interface: String,
-
-    ip_addresses: Vec<IpAddress>,
+    pub network_interface: String,
+    pub ip_addresses: Vec<IpAddress>,
 }
 
 #[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Hash)]
@@ -52,7 +51,7 @@ pub struct StaticRoute {
 }
 
 #[derive(Serialize, Deserialize, Debug)]
-pub struct IpAddress (IpAddressType, String, u64);
+pub struct IpAddress (pub IpAddressType, pub String, pub u64);
 
 #[derive(Serialize, Deserialize, Debug)]
 pub enum IpAddressType {
