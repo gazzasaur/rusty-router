@@ -1,5 +1,5 @@
-pub mod model;
-pub use self::model::*;
+pub mod config;
+pub use self::config::*;
 
 pub mod api;
 pub use self::api::*;
