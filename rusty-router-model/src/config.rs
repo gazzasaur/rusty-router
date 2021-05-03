@@ -3,8 +3,8 @@ use serde::{Serialize, Deserialize};
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Router {
-    network_interfaces: HashMap<String, NetworkInterface>,
-    vrf: HashMap<String, Vrf>,
+    pub network_interfaces: HashMap<String, NetworkInterface>,
+    pub vrfs: HashMap<String, Vrf>,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -71,7 +71,7 @@ mod tests {
                 device: "eth0".to_string(),
                 network_interface_type: NetworkInterfaceType::GenericInterface,
             })]),
-            vrf: HashMap::from_iter(vec![("Blue".to_string(), Vrf {
+            vrfs: HashMap::from_iter(vec![("Blue".to_string(), Vrf {
                 vrf_type: VrfTable::VirtualTable(10),
                 router_interfaces: vec![RouterInterface {
                     network_interface: "lo".to_string(),
@@ -86,6 +86,6 @@ mod tests {
                 priority: HashMap::from_iter(vec![(RouteSource::Static, 10)].drain(..)),
             })].drain(..)),
         };
-        assert_eq!("{\"network_interfaces\":{\"red1\":{\"device\":\"eth0\",\"network_interface_type\":\"GenericInterface\"}},\"vrf\":{\"Blue\":{\"vrf_type\":{\"VirtualTable\":10},\"router_interfaces\":[{\"network_interface\":\"lo\",\"ip_addresses\":[[\"IpV4\",\"192.168.0.1\",32]]}],\"static_routes\":[{\"prefix\":[\"IpV4\",\"172.0.0.0\",16],\"next_hop\":\"10.10.10.10\",\"metric\":100}],\"priority\":{\"Static\":10}}}}", serde_json::to_string(&config).unwrap());
+        assert_eq!("{\"network_interfaces\":{\"red1\":{\"device\":\"eth0\",\"network_interface_type\":\"GenericInterface\"}},\"vrfs\":{\"Blue\":{\"vrf_type\":{\"VirtualTable\":10},\"router_interfaces\":[{\"network_interface\":\"lo\",\"ip_addresses\":[[\"IpV4\",\"192.168.0.1\",32]]}],\"static_routes\":[{\"prefix\":[\"IpV4\",\"172.0.0.0\",16],\"next_hop\":\"10.10.10.10\",\"metric\":100}],\"priority\":{\"Static\":10}}}}", serde_json::to_string(&config).unwrap());
     }
 }

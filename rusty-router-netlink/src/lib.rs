@@ -26,8 +26,12 @@ impl NetlinkRustyRouter {
 }
 
 impl RustyRouter for NetlinkRustyRouter {
-    fn list_network_interfaces(&self) -> Result<Vec<rusty_router_model::NetworkInterface>, Box<dyn Error>> {
-        self.link_module.list_network_interfaces(&self.netlink_socket).map(|mut interfaces| interfaces.drain().map(|(_, interface)| interface).collect())
+    fn list_network_interfaces(&self) -> Result<Vec<rusty_router_model::NetworkInterfaceStatus>, Box<dyn Error>> {
+        Ok(self.link_module.list_network_interfaces(&self.netlink_socket)?.drain().map(|(_, v)| rusty_router_model::NetworkInterfaceStatus {
+            device: v.name,
+            device_binding: rusty_router_model::NetworkDeviceBinding::Bound,
+            interface_binding: rusty_router_model::NetworkInterfaceBinding::Unbound,
+        }).collect())
     }
 
     fn list_router_interfaces(&self) -> Result<Vec<rusty_router_model::RouterInterface>, Box<dyn Error>> {

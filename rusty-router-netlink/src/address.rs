@@ -19,7 +19,7 @@ impl NetlinkRustyRouterAddress {
         NetlinkRustyRouterAddress {}
     }
 
-    pub fn list_router_interfaces(&self, socket: &Box<dyn NetlinkSocket>, network_interfaces: &HashMap<u64, rusty_router_model::NetworkInterface>) -> Result<HashMap<u64, rusty_router_model::RouterInterface>, Box<dyn Error>> {
+    pub fn list_router_interfaces(&self, socket: &Box<dyn NetlinkSocket>, network_interfaces: &HashMap<u64, crate::link::NetlinkRustyRouterLinkStatus>) -> Result<HashMap<u64, rusty_router_model::RouterInterface>, Box<dyn Error>> {
         let link_message = netlink_packet_route::RtnlMessage::GetAddress(netlink_packet_route::AddressMessage::default());
         let packet: netlink_packet_core::NetlinkMessage<netlink_packet_route::RtnlMessage> = packet::build_default_packet(link_message);
         let messages = socket.send_message(packet)?;
@@ -29,7 +29,7 @@ impl NetlinkRustyRouterAddress {
             self.process_address_message(message).into_iter().for_each(|iface| { match network_interfaces.get(&iface.0) {
                 Some(network_interface) => {
                     result.entry(iface.0).or_insert(rusty_router_model::RouterInterface {
-                        network_interface: network_interface.device.clone(),
+                        network_interface: network_interface.name.clone(),
                         ip_addresses: vec![],
                     });
                 },
