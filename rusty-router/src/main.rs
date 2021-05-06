@@ -5,8 +5,11 @@ use rusty_router_model::RustyRouter;
 
 fn main() {
     let config = rusty_router_model::Router {
-        network_interfaces: vec![("Mine".to_string(), rusty_router_model::NetworkInterface {
+        network_interfaces: vec![("iface0".to_string(), rusty_router_model::NetworkInterface {
             device: "eth0".to_string(),
+            network_interface_type: rusty_router_model::NetworkInterfaceType::GenericInterface,
+        }), ("iface1".to_string(), rusty_router_model::NetworkInterface {
+            device: "eth9".to_string(),
             network_interface_type: rusty_router_model::NetworkInterfaceType::GenericInterface,
         })].into_iter().collect(),
         vrfs: HashMap::new(),
