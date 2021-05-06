@@ -5,6 +5,7 @@ authors = ["gazzasaur"]
 edition = "2018"
 
 [dependencies]
+nix = "0.20"
 rtnetlink = "0.7"
 serde_json = "1.0"
 netlink-sys = "0.6"

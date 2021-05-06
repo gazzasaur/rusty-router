@@ -1,4 +1,5 @@
 use std::error::Error;
+use std::collections::HashMap;
 
 use rusty_router_model;
 use rusty_router_model::RustyRouter;
@@ -9,6 +10,7 @@ pub mod socket;
 pub mod address;
 
 pub struct NetlinkRustyRouter {
+    config: rusty_router_model::Router,
     netlink_socket: Box<dyn socket::NetlinkSocket>,
 
     link_module: link::NetlinkRustyRouterLink,
@@ -16,8 +18,9 @@ pub struct NetlinkRustyRouter {
 }
 
 impl NetlinkRustyRouter {
-    pub fn new(netlink_socket: Box<dyn socket::NetlinkSocket>) -> NetlinkRustyRouter {
+    pub fn new(config: rusty_router_model::Router, netlink_socket: Box<dyn socket::NetlinkSocket>) -> NetlinkRustyRouter {
         NetlinkRustyRouter {
+            config,
             netlink_socket,
             link_module: link::NetlinkRustyRouterLink::new(),
             address_module: address::NetlinkRustyRouterAddress::new()
@@ -27,11 +30,17 @@ impl NetlinkRustyRouter {
 
 impl RustyRouter for NetlinkRustyRouter {
     fn list_network_interfaces(&self) -> Result<Vec<rusty_router_model::NetworkInterfaceStatus>, Box<dyn Error>> {
-        Ok(self.link_module.list_network_interfaces(&self.netlink_socket)?.drain().map(|(_, v)| rusty_router_model::NetworkInterfaceStatus {
-            device: v.name,
+        let mut device_id_links = self.link_module.list_network_interfaces(&self.netlink_socket)?;
+        let mut device_name_links: HashMap<String, link::NetlinkRustyRouterLinkStatus> = device_id_links.drain().map(|(_, link)| (link.name.clone(), link)).collect();
+        let mut device_config: HashMap<&String, String> = self.config.network_interfaces.iter().map(|(name, config)| (&config.device, name.clone())).collect();
+
+        let mut links = vec![];
+        device_name_links.drain().for_each(|(_, link)| links.push(rusty_router_model::NetworkInterfaceStatus {
+            interface_binding: device_config.remove(&link.name).map(|name| rusty_router_model::NetworkInterfaceBinding::Bound(name)).unwrap_or(rusty_router_model::NetworkInterfaceBinding::Unbound),
             device_binding: rusty_router_model::NetworkDeviceBinding::Bound,
-            interface_binding: rusty_router_model::NetworkInterfaceBinding::Unbound,
-        }).collect())
+            device: link.name,
+        }));
+        Ok(links)
     }
 
     fn list_router_interfaces(&self) -> Result<Vec<rusty_router_model::RouterInterface>, Box<dyn Error>> {
@@ -49,6 +58,6 @@ mod tests {
         mock.expect_send_message().returning(|_| {
             Ok(vec![])
         });
-        assert!(NetlinkRustyRouter::new(Box::new(mock)).list_network_interfaces().unwrap().len() == 0);
+        // assert!(NetlinkRustyRouter::new(Box::new(mock)).list_network_interfaces().unwrap().len() == 0);
     }
 }

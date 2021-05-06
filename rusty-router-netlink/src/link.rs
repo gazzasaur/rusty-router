@@ -35,7 +35,6 @@ impl NetlinkRustyRouterLink {
         Ok(result)
     }
 
-    // FIXME Brute force iteration.  This will work at small scales, but will suffer at large scales.
     fn process_link_message(&self, message: netlink_packet_core::NetlinkMessage<netlink_packet_route::RtnlMessage>) -> Option<NetlinkRustyRouterLinkStatus> {
         let mut index: Option<u64> = None;
         let mut name: Option<String> = None;
