@@ -14,6 +14,7 @@ use crate::socket::NetlinkSocket;
 pub struct NetlinkRustyRouterLinkStatus {
     pub index: u64,
     pub name: String,
+    pub state: rusty_router_model::NetworkInterfaceOperationalState,
 }
 
 pub struct NetlinkRustyRouterLink {}
@@ -38,12 +39,19 @@ impl NetlinkRustyRouterLink {
     fn process_link_message(&self, message: netlink_packet_core::NetlinkMessage<netlink_packet_route::RtnlMessage>) -> Option<NetlinkRustyRouterLinkStatus> {
         let mut index: Option<u64> = None;
         let mut name: Option<String> = None;
+        let mut state = rusty_router_model::NetworkInterfaceOperationalState::Unknown;
 
         if let netlink_packet_core::NetlinkPayload::InnerMessage(netlink_packet_route::RtnlMessage::NewLink(msg)) = message.payload {
             index = Some(msg.header.index as u64);
             for attribute in msg.nlas.iter() {
                 if let nlas::Nla::IfName(ifname) = attribute {
                     name = Some(ifname.clone())
+                } else if let nlas::Nla::OperState(operational_state) = attribute {
+                    state = match operational_state {
+                        nlas::State::Up => rusty_router_model::NetworkInterfaceOperationalState::Up,
+                        nlas::State::Down => rusty_router_model::NetworkInterfaceOperationalState::Down,
+                        _ => rusty_router_model::NetworkInterfaceOperationalState::Unknown,
+                    }
                 }
             }
         } else {
@@ -52,7 +60,8 @@ impl NetlinkRustyRouterLink {
 
         index.and_then(|index| name.and_then(|name| Some(NetlinkRustyRouterLinkStatus {
             index,
-            name
+            name,
+            state,
         })))
     }
 }

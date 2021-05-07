@@ -39,11 +39,13 @@ impl RustyRouter for NetlinkRustyRouter {
             interface_binding: device_config.remove(&link.name).map(|name| rusty_router_model::NetworkInterfaceBinding::Bound(name)).unwrap_or(rusty_router_model::NetworkInterfaceBinding::Unbound),
             device_binding: rusty_router_model::NetworkDeviceBinding::Bound,
             device: link.name,
+            operational_state: link.state,
         }));
         device_config.drain().for_each(|(device, interface)| links.push(rusty_router_model::NetworkInterfaceStatus {
             interface_binding: rusty_router_model::NetworkInterfaceBinding::Bound(interface),
             device_binding: rusty_router_model::NetworkDeviceBinding::Unbound,
             device: device.clone(),
+            operational_state: rusty_router_model::NetworkInterfaceOperationalState::Down,
         }));
         Ok(links)
     }
