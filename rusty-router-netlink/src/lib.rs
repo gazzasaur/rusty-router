@@ -59,10 +59,14 @@ mod tests {
 
     #[test]
     fn fetch_no_interfaces() {
+        let config = rusty_router_model::Router {
+            network_interfaces: HashMap::new(),
+            vrfs: HashMap::new(),
+        };
         let mut mock = socket::MockNetlinkSocket::new();
         mock.expect_send_message().returning(|_| {
             Ok(vec![])
         });
-        // assert!(NetlinkRustyRouter::new(Box::new(mock)).list_network_interfaces().unwrap().len() == 0);
+        assert!(NetlinkRustyRouter::new(config, Box::new(mock)).list_network_interfaces().unwrap().len() == 0);
     }
 }
