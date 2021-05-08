@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::fmt::{Display, Formatter};
 use serde::{Serialize, Deserialize};
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -52,6 +53,16 @@ pub struct StaticRoute {
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct IpAddress (pub IpAddressType, pub String, pub u64);
+impl IpAddress {
+    pub fn new(family: IpAddressType, address: String, prefix: u64) -> IpAddress {
+        IpAddress(family, address, prefix)
+    }
+}
+impl Display for IpAddress {
+    fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
+        write!(f, "{}/{}", self.1, self.2)
+    }
+}
 
 #[derive(Serialize, Deserialize, Debug)]
 pub enum IpAddressType {
