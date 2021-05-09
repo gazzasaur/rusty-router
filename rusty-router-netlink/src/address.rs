@@ -14,30 +14,35 @@ use crate::packet;
 use crate::socket::NetlinkSocket;
 
 pub struct NetlinkRustyRouterAddress {}
-struct NetlinkRustyRouterAddressResult (u64, rusty_router_model::IpAddress);
+
+#[derive(Debug)]
+pub struct NetlinkRustyRouterAddressResult {
+    pub index: u64,
+    pub address: rusty_router_model::IpAddress
+}
+
+#[derive(Debug)]
+pub struct NetlinkRustyRouterDeviceAddressesResult {
+    pub addresses: Vec<rusty_router_model::IpAddress>
+}
 
 impl NetlinkRustyRouterAddress {
     pub fn new() -> NetlinkRustyRouterAddress {
         NetlinkRustyRouterAddress {}
     }
 
-    pub fn list_router_interfaces(&self, socket: &Box<dyn NetlinkSocket>, network_interfaces: &HashMap<u64, crate::link::NetlinkRustyRouterLinkStatus>) -> Result<HashMap<u64, rusty_router_model::RouterInterface>, Box<dyn Error>> {
+    pub fn list_router_interfaces(&self, socket: &Box<dyn NetlinkSocket>) -> Result<HashMap<u64, NetlinkRustyRouterDeviceAddressesResult>, Box<dyn Error>> {
         let link_message = netlink_packet_route::RtnlMessage::GetAddress(netlink_packet_route::AddressMessage::default());
         let packet: netlink_packet_core::NetlinkMessage<netlink_packet_route::RtnlMessage> = packet::build_default_packet(link_message);
         let messages = socket.send_message(packet)?;
 
-        let mut result: HashMap<u64, rusty_router_model::RouterInterface> = HashMap::new();
+        let mut result: HashMap<u64, NetlinkRustyRouterDeviceAddressesResult> = HashMap::new();
         for message in messages {
-            self.process_address_message(message).into_iter().for_each(|iface| { match network_interfaces.get(&iface.0) {
-                Some(network_interface) => {
-                    result.entry(iface.0).or_insert(rusty_router_model::RouterInterface {
-                        network_interface: network_interface.name.clone(),
-                        ip_addresses: vec![],
-                    }).ip_addresses.push(iface.1);
-                },
-                // TODO This message sucks.  It give no actionable details.
-                None => warn!("Physical interfaces were not found for routes"),
-            }});
+            self.process_address_message(message).into_iter().for_each(|iface| {
+                result.entry(iface.index).or_insert(NetlinkRustyRouterDeviceAddressesResult {
+                    addresses: vec![]
+                }).addresses.push(iface.address);
+            })
         }
         Ok(result)
     }
@@ -76,8 +81,8 @@ impl NetlinkRustyRouterAddress {
             warn!("Netlink data does not contain a payload: {:?}", message)
         }
 
-        family.and_then(|family| address.and_then(|address| prefix.and_then(|prefix| index.and_then(|index| Some(NetlinkRustyRouterAddressResult(index, rusty_router_model::IpAddress (
+        family.and_then(|family| address.and_then(|address| prefix.and_then(|prefix| index.and_then(|index| Some(NetlinkRustyRouterAddressResult{ index, address: rusty_router_model::IpAddress (
             family, address, prefix
-        )))))))
+        )})))))
     }
 }

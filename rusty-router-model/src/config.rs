@@ -5,6 +5,7 @@ use serde::{Serialize, Deserialize};
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Router {
     pub network_interfaces: HashMap<String, NetworkInterface>,
+    pub router_interfaces: HashMap<String, RouterInterface>,
     pub vrfs: HashMap<String, Vrf>,
 }
 
@@ -21,8 +22,7 @@ pub enum NetworkInterfaceType {
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Vrf {
-    vrf_type: VrfTable,
-    router_interfaces: Vec<RouterInterface>,
+    table: VrfTable,
     static_routes: Vec<StaticRoute>,
     priority: HashMap<RouteSource, u64>,
 }
@@ -35,6 +35,7 @@ pub enum VrfTable {
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct RouterInterface {
+    pub vrf: Option<String>,
     pub network_interface: String,
     pub ip_addresses: Vec<IpAddress>,
 }
@@ -82,13 +83,13 @@ mod tests {
                 device: "eth0".to_string(),
                 network_interface_type: NetworkInterfaceType::GenericInterface,
             })]),
-            vrfs: HashMap::from_iter(vec![("Blue".to_string(), Vrf {
-                vrf_type: VrfTable::VirtualTable(10),
-                router_interfaces: vec![RouterInterface {
-                    network_interface: "lo".to_string(),
-
-                    ip_addresses: vec![IpAddress(IpAddressType::IpV4, "192.168.0.1".to_string(), 32)],
-                }],
+            router_interfaces: HashMap::from_iter(vec![("BlueInterface".to_string(), RouterInterface {
+                vrf: None,
+                network_interface: "lo".to_string(),
+                ip_addresses: vec![IpAddress(IpAddressType::IpV4, "192.168.0.1".to_string(), 32)],
+            })]),
+        vrfs: HashMap::from_iter(vec![("Blue".to_string(), Vrf {
+                table: VrfTable::VirtualTable(10),
                 static_routes: vec![StaticRoute {
                     prefix: IpAddress(IpAddressType::IpV4, "172.0.0.0".to_string(), 16),
                     next_hop: "10.10.10.10".to_string(),
