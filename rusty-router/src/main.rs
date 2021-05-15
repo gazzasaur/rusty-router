@@ -98,4 +98,6 @@ fn main() {
         });
         println!();
     }
+
+    rusty_router_netlink::socket::DefaultNetlinkSocket::new().unwrap().receive_messages().unwrap();
 }

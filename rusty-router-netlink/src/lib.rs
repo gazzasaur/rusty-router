@@ -7,21 +7,21 @@ use rusty_router_model;
 use rusty_router_model::RustyRouter;
 
 pub mod link;
+pub mod route;
 pub mod packet;
 pub mod socket;
-pub mod address;
 
 pub struct NetlinkRustyRouter {
     config: rusty_router_model::Router,
     netlink_socket: Box<dyn socket::NetlinkSocket>,
 
     link_module: link::NetlinkRustyRouterLink,
-    address_module: address::NetlinkRustyRouterAddress,
+    address_module: route::NetlinkRustyRouterAddress,
 }
 impl NetlinkRustyRouter {
     pub fn new(config: rusty_router_model::Router, netlink_socket: Box<dyn socket::NetlinkSocket>) -> NetlinkRustyRouter {
         NetlinkRustyRouter {
-            config, netlink_socket, link_module: link::NetlinkRustyRouterLink::new(), address_module: address::NetlinkRustyRouterAddress::new()
+            config, netlink_socket, link_module: link::NetlinkRustyRouterLink::new(), address_module: route::NetlinkRustyRouterAddress::new()
         }
     }
 }
