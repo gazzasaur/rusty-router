@@ -1,8 +1,12 @@
 use mockall::*;
 use mockall::predicate::*;
 
+use async_trait::async_trait;
+
 use std::sync::Arc;
 use std::error::Error;
+use tokio::sync::Mutex;
+use std::sync::atomic::AtomicBool;
 
 use netlink_sys;
 use netlink_packet_core;
@@ -14,43 +18,35 @@ use netlink_sys::protocols;
 // The code used was provided from the Rust Netlink package.
 
 #[automock]
-pub trait NetlinkSocketListener {
-    fn message_received(&self, callback: fn(netlink_packet_core::NetlinkMessage<netlink_packet_route::RtnlMessage>) -> ());
-}
-
-#[automock]
+#[async_trait]
 pub trait NetlinkSocket {
-    fn send_message(&self, message: netlink_packet_core::NetlinkMessage<netlink_packet_route::RtnlMessage>) -> Result<Vec<netlink_packet_core::NetlinkMessage<netlink_packet_route::RtnlMessage>>, Box<dyn Error>>;
+    async fn send_message(&self, message: netlink_packet_core::NetlinkMessage<netlink_packet_route::RtnlMessage>) -> Result<Vec<netlink_packet_core::NetlinkMessage<netlink_packet_route::RtnlMessage>>, Box<dyn Error>>;
 }
 
 pub struct DefaultNetlinkSocket {
-    socket: netlink_sys::Socket,
-    change_socket: Arc<netlink_sys::Socket>,
-    callback: fn (netlink_packet_core::NetlinkMessage<netlink_packet_route::RtnlMessage>) -> (),
+    _running: AtomicBool,
+    socket: Arc<Mutex<netlink_sys::TokioSocket>>,
+    _multicast_socket: Arc<Mutex<netlink_sys::TokioSocket>>
 }
 impl DefaultNetlinkSocket {
     pub fn new() -> Result<DefaultNetlinkSocket, Box<dyn Error>> {
-        let mut socket = netlink_sys::Socket::new(protocols::NETLINK_ROUTE)?;
+        let mut socket = netlink_sys::TokioSocket::new(protocols::NETLINK_ROUTE)?;
         socket.bind_auto()?;
         socket.connect(&netlink_sys::SocketAddr::new(0, 0))?;
 
-        let mut change_socket = netlink_sys::Socket::new(protocols::NETLINK_ROUTE)?;
-        change_socket.bind(&netlink_sys::SocketAddr::new(0, 0x11))?;
-        socket.connect(&netlink_sys::SocketAddr::new(0, 0))?;
+        let mut multicast_socket = netlink_sys::TokioSocket::new(protocols::NETLINK_ROUTE)?;
+        multicast_socket.bind(&netlink_sys::SocketAddr::new(0, 0x11))?;
+        multicast_socket.connect(&netlink_sys::SocketAddr::new(0, 0))?;
 
-        Ok(DefaultNetlinkSocket { socket, change_socket: Arc::new(change_socket), callback: |_| () })
+        Ok(DefaultNetlinkSocket { _running: AtomicBool::from(true), socket: Arc::new(Mutex::new(socket)), _multicast_socket: Arc::new(Mutex::new(multicast_socket))})
     }
 
-    pub fn receive_messages(&self) -> Result<(), Box<dyn Error>> {
-        self.process_receive_messages(&self.change_socket, &self.callback)
-    }
-
-    fn process_receive_messages(&self, socket: &netlink_sys::Socket, mut callback: impl FnMut(netlink_packet_core::NetlinkMessage<netlink_packet_route::RtnlMessage>) -> ()) -> Result<(), Box<dyn Error>> {
+    async fn process_receive_messages(socket: &mut netlink_sys::TokioSocket, mut callback: impl FnMut(netlink_packet_core::NetlinkMessage<netlink_packet_route::RtnlMessage>) -> ()) -> Result<(), Box<dyn Error>> {
         let mut receive_buffer = vec![0; (2 as usize).pow(16)];
         
         loop {
             let mut offset = 0;
-            let size = socket.recv(&mut receive_buffer[..], 0)?;
+            let size = socket.recv(&mut receive_buffer[..]).await?;
 
             loop {
                 let bytes = &receive_buffer[offset..];
@@ -70,16 +66,19 @@ impl DefaultNetlinkSocket {
         }
     }
 }
+#[async_trait]
 impl NetlinkSocket for DefaultNetlinkSocket {
-    fn send_message(&self, message: netlink_packet_core::NetlinkMessage<netlink_packet_route::RtnlMessage>) -> Result<Vec<netlink_packet_core::NetlinkMessage<netlink_packet_route::RtnlMessage>>, Box<dyn Error>> {
+    async fn send_message(&self, message: netlink_packet_core::NetlinkMessage<netlink_packet_route::RtnlMessage>) -> Result<Vec<netlink_packet_core::NetlinkMessage<netlink_packet_route::RtnlMessage>>, Box<dyn Error>> {
+        let socket = self.socket.clone();
         let mut buf = vec![0; message.header.length as usize];
         message.serialize(&mut buf[..]);
-        self.socket.send(&buf[..], 0)?;
-
+        let mut socket = socket.lock().await;
+        socket.send(&buf[..]).await?;
+    
         let mut received_messages = Vec::new();
-        self.process_receive_messages(&self.socket, |rx_packet| {
-            &received_messages.push(rx_packet);
-        })?;
+        DefaultNetlinkSocket::process_receive_messages(&mut socket, |rx_packet| {
+             &received_messages.push(rx_packet);
+        }).await?;
         Ok(received_messages)
     }
 }

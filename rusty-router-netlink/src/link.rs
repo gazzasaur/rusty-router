@@ -1,3 +1,4 @@
+use std::sync::Arc;
 use std::error::Error;
 use std::collections::HashMap;
 
@@ -24,10 +25,11 @@ impl NetlinkRustyRouterLink {
         NetlinkRustyRouterLink {}
     }
 
-    pub fn list_network_interfaces(&self, socket: &Box<dyn NetlinkSocket>) -> Result<HashMap<u64, NetlinkRustyRouterLinkStatus>, Box<dyn Error>> {
+    pub async fn list_network_interfaces(&self, socket: &Arc<dyn NetlinkSocket + Send + Sync>) -> Result<HashMap<u64, NetlinkRustyRouterLinkStatus>, Box<dyn Error>> {
         let link_message = netlink_packet_route::RtnlMessage::GetLink(netlink_packet_route::LinkMessage::default());
         let packet: netlink_packet_core::NetlinkMessage<netlink_packet_route::RtnlMessage> = packet::build_default_packet(link_message);
-        let messages = socket.send_message(packet)?;
+
+        let messages = socket.send_message(packet).await?;
 
         let mut result: HashMap<u64, NetlinkRustyRouterLinkStatus> = HashMap::new();
         for message in messages {
