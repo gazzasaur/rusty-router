@@ -19,7 +19,7 @@ cargo install cargo-tarpaulin
 ```
 * Run tests with coverage
 ```
-RUST_BACKTRACE=1; cargo tarpaulin
+RUST_BACKTRACE=1; cargo tarpaulin --ignore-tests
 ```
 
 ## Road-map
