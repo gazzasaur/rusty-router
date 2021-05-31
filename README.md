@@ -13,6 +13,8 @@ RUST_BACKTRACE=1; cargo test
 ```
 
 ##### Run Tests with Coverage
+At present Tarpaulin only supports x86_64 builds.
+
 * Install Tarpaulin
 ```
 cargo install cargo-tarpaulin
