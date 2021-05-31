@@ -4,9 +4,26 @@ use serde::{Serialize, Deserialize};
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Router {
-    pub network_interfaces: HashMap<String, NetworkInterface>,
-    pub router_interfaces: HashMap<String, RouterInterface>,
-    pub vrfs: HashMap<String, Vrf>,
+    network_interfaces: HashMap<String, NetworkInterface>,
+    router_interfaces: HashMap<String, RouterInterface>,
+    vrfs: HashMap<String, Vrf>,
+}
+impl Router {
+    pub fn new(network_interfaces: HashMap<String, NetworkInterface>, router_interfaces: HashMap<String, RouterInterface>, vrfs: HashMap<String, Vrf>) -> Router {
+        Router { network_interfaces, router_interfaces, vrfs }
+    }
+
+    pub fn get_network_interfaces(&self) -> &HashMap<String, NetworkInterface> {
+        &self.network_interfaces
+    }
+
+    pub fn get_router_interfaces(&self) -> &HashMap<String, RouterInterface> {
+        &self.router_interfaces
+    }
+
+    pub fn get_vrfs(&self) -> &HashMap<String, Vrf> {
+        &self.vrfs
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug)]

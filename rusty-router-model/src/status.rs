@@ -53,7 +53,7 @@ impl RouterInterfaceStatus {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Clone)]
 pub enum NetworkInterfaceOperationalState {
     Up,
     Down,
