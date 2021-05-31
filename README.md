@@ -5,7 +5,24 @@ This is my first real-world application of Rust.  I mainly use Java and C++ toda
 
 I chose to implement a router as I have a passion for Routing Protocols.  Routing was my first real exposure to a large scale distributed systems.  I spent most of my time on monolithic systems before this.  I still see many of the concepts baked into RFCs from decades ago being applied as *new* techniques today.
 
-### Road-map
+## Development
+
+##### Run Tests
+```
+RUST_BACKTRACE=1; cargo test
+```
+
+##### Run Tests with Coverage
+* Install Tarpaulin
+```
+cargo install cargo-tarpaulin
+```
+* Run tests with coverage
+```
+RUST_BACKTRACE=1; cargo tarpaulin
+```
+
+## Road-map
 * IPv4
   * Virtal Route Table (Static Routes)
   * Forward Table Interface
