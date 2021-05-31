@@ -11,21 +11,17 @@ use netlink_packet_route::rtnl::link::nlas;
 use crate::packet;
 use crate::socket::NetlinkSocket;
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct NetlinkRustyRouterLinkStatus {
     pub index: u64,
     pub name: String,
     pub state: rusty_router_model::NetworkInterfaceOperationalState,
 }
 
-pub struct NetlinkRustyRouterLink {}
-
+pub struct NetlinkRustyRouterLink {
+}
 impl NetlinkRustyRouterLink {
-    pub fn new() -> NetlinkRustyRouterLink {
-        NetlinkRustyRouterLink {}
-    }
-
-    pub async fn list_network_interfaces(&self, socket: &Arc<dyn NetlinkSocket + Send + Sync>) -> Result<HashMap<u64, NetlinkRustyRouterLinkStatus>, Box<dyn Error>> {
+    pub async fn list_network_interfaces(socket: &Arc<dyn NetlinkSocket + Send + Sync>) -> Result<HashMap<u64, NetlinkRustyRouterLinkStatus>, Box<dyn Error>> {
         let link_message = netlink_packet_route::RtnlMessage::GetLink(netlink_packet_route::LinkMessage::default());
         let packet: netlink_packet_core::NetlinkMessage<netlink_packet_route::RtnlMessage> = packet::build_default_packet(link_message);
 
@@ -33,12 +29,12 @@ impl NetlinkRustyRouterLink {
 
         let mut result: HashMap<u64, NetlinkRustyRouterLinkStatus> = HashMap::new();
         for message in messages {
-            self.process_link_message(message).into_iter().for_each(|data| { result.insert(data.index, data).iter().for_each(|old_value| warn!("Duplicate interface index: {:?}", old_value)); });
+            NetlinkRustyRouterLink::process_link_message(message).into_iter().for_each(|data| { result.insert(data.index, data).iter().for_each(|old_value| warn!("Duplicate interface index: {:?}", old_value)); });
         }
         Ok(result)
     }
 
-    fn process_link_message(&self, message: netlink_packet_core::NetlinkMessage<netlink_packet_route::RtnlMessage>) -> Option<NetlinkRustyRouterLinkStatus> {
+    fn process_link_message(message: netlink_packet_core::NetlinkMessage<netlink_packet_route::RtnlMessage>) -> Option<NetlinkRustyRouterLinkStatus> {
         let mut index: Option<u64> = None;
         let mut name: Option<String> = None;
         let mut state = rusty_router_model::NetworkInterfaceOperationalState::Unknown;

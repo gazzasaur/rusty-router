@@ -1,7 +1,7 @@
 use std::fmt::{Display, Formatter};
 use serde::{Serialize, Deserialize};
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, PartialEq, Eq)]
 pub struct NetworkInterfaceStatus {
     device: String,
     name: Option<String>,
@@ -53,7 +53,7 @@ impl RouterInterfaceStatus {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, PartialEq, Eq)]
 pub enum NetworkInterfaceOperationalState {
     Up,
     Down,

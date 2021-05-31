@@ -89,7 +89,7 @@ async fn main() {
         println!();
 
         println!("================================================================================");
-        println!("Unused Network Interfaces");
+        println!("Missing Network Interfaces");
         println!("================================================================================");
         addresses.iter().for_each(|address| {
             if address.get_network_interface_status().get_operational_state() == &rusty_router_model::NetworkInterfaceOperationalState::NotFound {

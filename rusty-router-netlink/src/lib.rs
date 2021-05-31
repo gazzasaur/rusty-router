@@ -20,7 +20,8 @@ pub struct NetlinkRustyRouter {
 impl NetlinkRustyRouter {
     pub fn new(config: rusty_router_model::Router, netlink_socket: Arc<dyn socket::NetlinkSocket + Send + Sync>) -> NetlinkRustyRouter {
         NetlinkRustyRouter {
-            config: Arc::new(config), netlink_socket
+            config: Arc::new(config),
+            netlink_socket: netlink_socket,
         }
     }
 }
@@ -29,9 +30,9 @@ impl RustyRouter for NetlinkRustyRouter {
     async fn list_network_interfaces(&self) -> Result<Vec<rusty_router_model::NetworkInterfaceStatus>, Box<dyn Error>> {
         let config = self.config.clone();
         let netlink_socket = self.netlink_socket.clone();
-        let link_module = link::NetlinkRustyRouterLink::new();
 
-        let mut device_id_links = link_module.list_network_interfaces(&netlink_socket).await?;
+        #[cfg(test)] let mut device_id_links = crate::tests::list_network_interfaces(&netlink_socket).await?;
+        #[cfg(not(test))] let mut device_id_links = link::NetlinkRustyRouterLink::list_network_interfaces(&netlink_socket).await?;
         let mut device_name_links: HashMap<String, link::NetlinkRustyRouterLinkStatus> = device_id_links.drain().map(|(_, link)| (link.name.clone(), link)).collect();
         let mut device_config: HashMap<&String, String> = config.network_interfaces.iter().map(|(name, config)| (&config.device, name.clone())).collect();
 
@@ -46,12 +47,10 @@ impl RustyRouter for NetlinkRustyRouter {
     }
 
     async fn list_router_interfaces(&self) -> Result<Vec<rusty_router_model::RouterInterfaceStatus>, Box<dyn Error>> {
-        let mut device_id_links = link::NetlinkRustyRouterLink::new().list_network_interfaces(&self.netlink_socket).await?;
+        let mut device_id_links = link::NetlinkRustyRouterLink::list_network_interfaces(&self.netlink_socket).await?;
         let mut device_name_net_name: HashMap<&String, &String> = self.config.network_interfaces.iter().map(|(name, interface)| (&interface.device, name)).collect();
         let mut net_name_addr_name: HashMap<&String, &String> = self.config.router_interfaces.iter().map(|(name, interface)| (&interface.network_interface, name)).collect();
-
-        let mut device_id_addresses = route::NetlinkRustyRouterAddress::new().list_router_interfaces(&self.netlink_socket).await?;
-        // let device_config: HashMap<&String, &String> = self.config.network_interfaces.iter().map(|(name, config)| (&config.device, name)).collect();
+        let mut device_id_addresses = route::NetlinkRustyRouterAddress::list_router_interfaces(&self.netlink_socket).await?;
 
         let mut addresses = vec![];
         device_id_addresses.drain().for_each(|(index, address_status)| {
@@ -65,7 +64,7 @@ impl RustyRouter for NetlinkRustyRouter {
                         )
                     ))
                 },
-                None => warn!("Device {} found in addresses but not devices.", index),
+                None => warn!("Ignoring device {}.  Found in addresses but not devices.", index),
             }
         });
         net_name_addr_name.drain().for_each(|(net_name, addr_name)| {
@@ -85,18 +84,41 @@ impl RustyRouter for NetlinkRustyRouter {
 
 #[cfg(test)]
 mod tests {
-    // use super::*;
+    use super::*;
+    use std::sync::Mutex;
+    use std::cell::RefCell;
+    use lazy_static::lazy_static;
+
+    lazy_static! {
+        static ref TEST_DATA: Arc<Mutex<RefCell<Option<HashMap<u64, link::NetlinkRustyRouterLinkStatus>>>>> = Arc::new(std::sync::Mutex::new(RefCell::new(None)));
+    }
+
+    pub async fn list_network_interfaces(_socket: &Arc<dyn socket::NetlinkSocket + Send + Sync>) -> Result<HashMap<u64, link::NetlinkRustyRouterLinkStatus>, Box<dyn Error>> {
+        if let Ok(test_data) = TEST_DATA.lock() { if let Some(test_value) = test_data.take() {
+            return Ok(test_value)
+        }}
+        panic!("No test data found");
+    }
 
     #[test]
-    fn fetch_no_interfaces() {
-        // let config = rusty_router_model::Router {
-        //     network_interfaces: HashMap::new(),
-        //     vrfs: HashMap::new(),
-        // };
-        // let mut mock = socket::MockNetlinkSocket::new();
-        // mock.expect_send_message().returning(|_| {
-        //     Ok(vec![])
-        // });
-        // assert!(NetlinkRustyRouter::new(config, Box::new(mock)).list_network_interfaces().unwrap().len() == 0);
+    fn test_list_network_interfaces_empty() {
+        let config = rusty_router_model::Router {
+            network_interfaces: HashMap::new(),
+            router_interfaces: HashMap::new(),
+            vrfs: HashMap::new(),
+        };
+
+        if let Ok(test_data) = TEST_DATA.lock() {
+            test_data.replace(Some(HashMap::new()));
+        }
+
+        let mut mock_netlink_socket = crate::socket::MockNetlinkSocket::new();
+        mock_netlink_socket.expect_send_message().returning(|_| Ok(vec![]));
+
+        let subject = NetlinkRustyRouter { config: Arc::new(config), netlink_socket: Arc::new(mock_netlink_socket) };
+        match tokio_test::block_on(subject.list_network_interfaces()) {
+            Ok(actual) => assert_eq!(actual, vec![]),
+            Err(_) => panic!("Test Failed"),
+        };
     }
 }

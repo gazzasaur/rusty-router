@@ -25,18 +25,14 @@ pub struct NetlinkRustyRouterDeviceAddressesResult {
     pub addresses: Vec<rusty_router_model::IpAddress>
 }
 impl NetlinkRustyRouterAddress {
-    pub fn new() -> NetlinkRustyRouterAddress {
-        NetlinkRustyRouterAddress {}
-    }
-
-    pub async fn list_router_interfaces(&self, socket: &Arc<dyn NetlinkSocket + Send + Sync>) -> Result<HashMap<u64, NetlinkRustyRouterDeviceAddressesResult>, Box<dyn Error>> {
+    pub async fn list_router_interfaces(socket: &Arc<dyn NetlinkSocket + Send + Sync>) -> Result<HashMap<u64, NetlinkRustyRouterDeviceAddressesResult>, Box<dyn Error>> {
         let link_message = netlink_packet_route::RtnlMessage::GetAddress(netlink_packet_route::AddressMessage::default());
         let packet: netlink_packet_core::NetlinkMessage<netlink_packet_route::RtnlMessage> = packet::build_default_packet(link_message);
         let messages = socket.send_message(packet).await?;
 
         let mut result: HashMap<u64, NetlinkRustyRouterDeviceAddressesResult> = HashMap::new();
         for message in messages {
-            self.process_address_message(message).into_iter().for_each(|iface| {
+            NetlinkRustyRouterAddress::process_address_message(message).into_iter().for_each(|iface| {
                 result.entry(iface.index).or_insert(NetlinkRustyRouterDeviceAddressesResult {
                     addresses: vec![]
                 }).addresses.push(iface.address);
@@ -45,7 +41,7 @@ impl NetlinkRustyRouterAddress {
         Ok(result)
     }
 
-    fn process_address_message(&self, message: netlink_packet_core::NetlinkMessage<netlink_packet_route::RtnlMessage>) -> Option<NetlinkRustyRouterAddressResult> {
+    fn process_address_message(message: netlink_packet_core::NetlinkMessage<netlink_packet_route::RtnlMessage>) -> Option<NetlinkRustyRouterAddressResult> {
         let mut index: Option<u64> = None;
         let mut prefix: Option<u64> = None;
         let mut address: Option<String> = None;

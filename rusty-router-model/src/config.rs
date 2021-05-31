@@ -98,6 +98,6 @@ mod tests {
                 priority: HashMap::from_iter(vec![(RouteSource::Static, 10)].drain(..)),
             })].drain(..)),
         };
-        assert_eq!("{\"network_interfaces\":{\"red1\":{\"device\":\"eth0\",\"network_interface_type\":\"GenericInterface\"}},\"vrfs\":{\"Blue\":{\"vrf_type\":{\"VirtualTable\":10},\"router_interfaces\":[{\"network_interface\":\"lo\",\"ip_addresses\":[[\"IpV4\",\"192.168.0.1\",32]]}],\"static_routes\":[{\"prefix\":[\"IpV4\",\"172.0.0.0\",16],\"next_hop\":\"10.10.10.10\",\"metric\":100}],\"priority\":{\"Static\":10}}}}", serde_json::to_string(&config).unwrap());
+        assert_eq!("{\"network_interfaces\":{\"red1\":{\"device\":\"eth0\",\"network_interface_type\":\"GenericInterface\"}},\"router_interfaces\":{\"BlueInterface\":{\"vrf\":null,\"network_interface\":\"lo\",\"ip_addresses\":[[\"IpV4\",\"192.168.0.1\",32]]}},\"vrfs\":{\"Blue\":{\"table\":{\"VirtualTable\":10},\"static_routes\":[{\"prefix\":[\"IpV4\",\"172.0.0.0\",16],\"next_hop\":\"10.10.10.10\",\"metric\":100}],\"priority\":{\"Static\":10}}}}", serde_json::to_string(&config).unwrap());
     }
 }
