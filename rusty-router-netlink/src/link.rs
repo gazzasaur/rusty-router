@@ -17,6 +17,23 @@ pub struct NetlinkRustyRouterLinkStatus {
     pub name: String,
     pub state: rusty_router_model::NetworkInterfaceOperationalState,
 }
+impl NetlinkRustyRouterLinkStatus {
+    pub fn new(index: u64, name: String, state: rusty_router_model::NetworkInterfaceOperationalState) -> NetlinkRustyRouterLinkStatus {
+        NetlinkRustyRouterLinkStatus { index, name, state }
+    }
+
+    pub fn get_index(&self) -> u64 {
+        self.index
+    }
+
+    pub fn get_name(&self) -> &String {
+        &self.name
+    }
+
+    pub fn get_state(&self) -> &rusty_router_model::NetworkInterfaceOperationalState {
+        &self.state
+    }
+}
 
 pub struct NetlinkRustyRouterLink {
 }
