@@ -13,9 +13,9 @@ use crate::socket::NetlinkSocket;
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct NetlinkRustyRouterLinkStatus {
-    pub index: u64,
-    pub name: String,
-    pub state: rusty_router_model::NetworkInterfaceOperationalState,
+    index: u64,
+    name: String,
+    state: rusty_router_model::NetworkInterfaceOperationalState,
 }
 impl NetlinkRustyRouterLinkStatus {
     pub fn new(index: u64, name: String, state: rusty_router_model::NetworkInterfaceOperationalState) -> NetlinkRustyRouterLinkStatus {

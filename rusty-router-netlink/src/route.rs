@@ -12,8 +12,6 @@ use rusty_router_model;
 use crate::packet;
 use crate::socket::NetlinkSocket;
 
-pub struct NetlinkRustyRouterAddress {}
-
 #[derive(Debug)]
 pub struct NetlinkRustyRouterAddressResult {
     pub index: u64,
@@ -22,7 +20,23 @@ pub struct NetlinkRustyRouterAddressResult {
 
 #[derive(Debug)]
 pub struct NetlinkRustyRouterDeviceAddressesResult {
-    pub addresses: Vec<rusty_router_model::IpAddress>
+    addresses: Vec<rusty_router_model::IpAddress>
+}
+impl NetlinkRustyRouterDeviceAddressesResult {
+    pub fn new(addresses: Vec<rusty_router_model::IpAddress>) -> NetlinkRustyRouterDeviceAddressesResult {
+        NetlinkRustyRouterDeviceAddressesResult { addresses }
+    }
+
+    pub fn take_addresses(&mut self) -> Vec<rusty_router_model::IpAddress> {
+        std::mem::replace(&mut self.addresses, vec![])
+    }
+
+    pub fn add_address(&mut self, address: rusty_router_model::IpAddress) -> () {
+        &mut self.addresses.push(address);
+    }
+}
+
+pub struct NetlinkRustyRouterAddress {
 }
 impl NetlinkRustyRouterAddress {
     pub async fn list_router_interfaces(socket: &Arc<dyn NetlinkSocket + Send + Sync>) -> Result<HashMap<u64, NetlinkRustyRouterDeviceAddressesResult>, Box<dyn Error>> {
@@ -33,9 +47,7 @@ impl NetlinkRustyRouterAddress {
         let mut result: HashMap<u64, NetlinkRustyRouterDeviceAddressesResult> = HashMap::new();
         for message in messages {
             NetlinkRustyRouterAddress::process_address_message(message).into_iter().for_each(|iface| {
-                result.entry(iface.index).or_insert(NetlinkRustyRouterDeviceAddressesResult {
-                    addresses: vec![]
-                }).addresses.push(iface.address);
+                result.entry(iface.index).or_insert(NetlinkRustyRouterDeviceAddressesResult::new(vec![])).add_address(iface.address);
             })
         }
         Ok(result)

@@ -27,7 +27,7 @@ impl NetworkInterfaceStatus {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, PartialEq, Eq)]
 pub struct RouterInterfaceStatus {
     name: Option<String>,
     addresses: Vec<crate::config::IpAddress>,
