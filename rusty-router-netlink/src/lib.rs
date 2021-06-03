@@ -221,4 +221,57 @@ mod tests {
             Err(_) => panic!("Test Failed"),
         };
     }
+
+    #[test]
+    fn test_list_router_interfaces_existing() {
+        let config = rusty_router_model::Router::new(HashMap::new(), HashMap::new(), HashMap::new());
+
+        let mock_netlink_socket: Arc<dyn socket::NetlinkSocket + Send + Sync> = Arc::new(crate::socket::MockNetlinkSocket::new());
+        if let Ok(mut test_data) = LINK_TEST_DATA.lock() {
+            test_data.insert(Arc::as_ptr(&mock_netlink_socket) as * const () as usize, vec![(
+                100 as u64,
+                link::NetlinkRustyRouterLinkStatus::new(100, "eth0".to_string(), rusty_router_model::NetworkInterfaceOperationalState::Up)
+            )].into_iter().collect());
+        }
+        if let Ok(mut test_data) = ROUTE_TEST_DATA.lock() {
+            test_data.insert(Arc::as_ptr(&mock_netlink_socket) as * const () as usize, vec![(
+                100 as u64,
+                route::NetlinkRustyRouterDeviceAddressesResult::new(vec![rusty_router_model::IpAddress::new(rusty_router_model::IpAddressType::IpV4, "127.0.0.1".to_string(), 32)])
+            )].into_iter().collect());
+        }
+
+        let subject = NetlinkRustyRouter { config: Arc::new(config), netlink_socket: mock_netlink_socket.clone() };
+        match tokio_test::block_on(subject.list_router_interfaces()) {
+            Ok(actual) => assert_eq!(actual, vec![rusty_router_model::RouterInterfaceStatus::new(
+                None, vec![rusty_router_model::IpAddress::new(
+                    rusty_router_model::IpAddressType::IpV4, "127.0.0.1".to_string(), 32
+                )], rusty_router_model::NetworkInterfaceStatus::new(
+                    "eth0".to_string(), None, rusty_router_model::NetworkInterfaceOperationalState::Up
+                )
+            )]),
+            Err(_) => panic!("Test Failed"),
+        };
+    }
+
+    #[test]
+    fn test_list_router_interfaces_not_existing() {
+        let config = rusty_router_model::Router::new(HashMap::new(), HashMap::new(), HashMap::new());
+
+        let mock_netlink_socket: Arc<dyn socket::NetlinkSocket + Send + Sync> = Arc::new(crate::socket::MockNetlinkSocket::new());
+        if let Ok(mut test_data) = LINK_TEST_DATA.lock() {
+            test_data.insert(Arc::as_ptr(&mock_netlink_socket) as * const () as usize, HashMap::new());
+        }
+        if let Ok(mut test_data) = ROUTE_TEST_DATA.lock() {
+            test_data.insert(Arc::as_ptr(&mock_netlink_socket) as * const () as usize, vec![(
+                100 as u64,
+                route::NetlinkRustyRouterDeviceAddressesResult::new(vec![rusty_router_model::IpAddress::new(rusty_router_model::IpAddressType::IpV4, "127.0.0.1".to_string(), 32)])
+            )].into_iter().collect());
+        }
+
+        let subject = NetlinkRustyRouter { config: Arc::new(config), netlink_socket: mock_netlink_socket.clone() };
+        match tokio_test::block_on(subject.list_router_interfaces()) {
+            Ok(actual) => assert_eq!(actual, vec![]),
+            Err(_) => panic!("Test Failed"),
+        };
+    }
 }
