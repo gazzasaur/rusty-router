@@ -34,6 +34,28 @@ impl NetlinkRustyRouter {
         #[cfg(test)] return crate::tests::list_router_interfaces(&self.netlink_socket).await;
         #[cfg(not(test))] return route::NetlinkRustyRouterAddress::list_router_interfaces(&self.netlink_socket).await;
     }
+
+    async fn perform_list_mapped_router_interfaces(&self, network_router_interfaces: &mut HashMap<&String, &String>, addresses: &mut Vec<rusty_router_model::RouterInterfaceStatus>) -> Result<(), Box<dyn Error>> {
+        let mut device_id_links = self.perform_list_network_interfaces().await?;
+        let mut device_id_addresses = self.perform_list_router_interfaces().await?;
+        let mut device_network_interfaces: HashMap<&String, &String> = self.config.get_network_interfaces().iter().map(|(name, interface)| (interface.get_device(), name)).collect();
+    
+        device_id_addresses.drain().for_each(|(index, mut address_status)| {
+            match device_id_links.remove(&index) {
+                Some(device) => {
+                    let net_name = device_network_interfaces.remove(&device.get_name().clone());
+                    let addr_name: Option<String> = net_name.and_then(|net_name| network_router_interfaces.remove(net_name).and_then(|addr_name| Some(addr_name.clone())));
+                    addresses.push(rusty_router_model::RouterInterfaceStatus::new(
+                        addr_name, address_status.take_addresses(), rusty_router_model::NetworkInterfaceStatus::new(
+                            device.get_name().clone(), net_name.map(|value| value.clone()), device.get_state().clone()
+                        )
+                    ))
+                },
+                None => warn!("Ignoring device {}.  Found in addresses but not devices.", index),
+            }
+        });
+        Ok(())
+    }
 }
 #[async_trait]
 impl RustyRouter for NetlinkRustyRouter {
@@ -41,7 +63,7 @@ impl RustyRouter for NetlinkRustyRouter {
         let config = self.config.clone();
         let mut device_id_links = self.perform_list_network_interfaces().await?;
         let mut device_name_links: HashMap<String, link::NetlinkRustyRouterLinkStatus> = device_id_links.drain().map(|(_, link)| (link.get_name().clone(), link)).collect();
-        let mut device_config: HashMap<&String, String> = config.get_network_interfaces().iter().map(|(name, config)| (&config.device, name.clone())).collect();
+        let mut device_config: HashMap<&String, String> = config.get_network_interfaces().iter().map(|(name, config)| (config.get_device(), name.clone())).collect();
 
         let mut links = vec![];
         device_name_links.drain().for_each(|(_, link)| links.push(rusty_router_model::NetworkInterfaceStatus::new(
@@ -54,32 +76,16 @@ impl RustyRouter for NetlinkRustyRouter {
     }
 
     async fn list_router_interfaces(&self) -> Result<Vec<rusty_router_model::RouterInterfaceStatus>, Box<dyn Error>> {
-        let mut device_id_links = self.perform_list_network_interfaces().await?;
-        let mut device_name_net_name: HashMap<&String, &String> = self.config.get_network_interfaces().iter().map(|(name, interface)| (&interface.device, name)).collect();
-        let mut net_name_addr_name: HashMap<&String, &String> = self.config.get_router_interfaces().iter().map(|(name, interface)| (&interface.network_interface, name)).collect();
-        let mut device_id_addresses = self.perform_list_router_interfaces().await?;
-
         let mut addresses = vec![];
-        device_id_addresses.drain().for_each(|(index, mut address_status)| {
-            match device_id_links.remove(&index) {
-                Some(device) => {
-                    let net_name = device_name_net_name.remove(&device.get_name().clone());
-                    let addr_name: Option<String> = net_name.and_then(|net_name| net_name_addr_name.remove(net_name).and_then(|addr_name| Some(addr_name.clone())));
-                    addresses.push(rusty_router_model::RouterInterfaceStatus::new(
-                        addr_name, address_status.take_addresses(), rusty_router_model::NetworkInterfaceStatus::new(
-                            device.get_name().clone(), net_name.map(|value| value.clone()), device.get_state().clone()
-                        )
-                    ))
-                },
-                None => warn!("Ignoring device {}.  Found in addresses but not devices.", index),
-            }
-        });
-        net_name_addr_name.drain().for_each(|(net_name, addr_name)| {
+        let mut network_router_interfaces: HashMap<&String, &String> = self.config.get_router_interfaces().iter().map(|(name, interface)| (&interface.network_interface, name)).collect();
+
+        self.perform_list_mapped_router_interfaces(&mut network_router_interfaces, &mut addresses).await?;
+        network_router_interfaces.drain().for_each(|(net_name, addr_name)| {
             let network_interface = match self.config.get_network_interfaces().get(net_name) {
                 Some(network_interface) => rusty_router_model::NetworkInterfaceStatus::new(
-                    network_interface.device.clone(), Some(net_name.clone()), rusty_router_model::NetworkInterfaceOperationalState::NotFound
+                    network_interface.get_device().clone(), Some(net_name.clone()), rusty_router_model::NetworkInterfaceOperationalState::NotFound
                 ),
-                None => return,
+                None => return
             };
             addresses.push(rusty_router_model::RouterInterfaceStatus::new(
                 Some(addr_name.clone()), vec![], network_interface
@@ -161,10 +167,7 @@ mod tests {
     #[test]
     fn test_list_network_interfaces_missing() {
         let config = rusty_router_model::Router::new(vec![
-            ("iface0".to_string(), rusty_router_model::NetworkInterface {
-                device: "eth0".to_string(),
-                network_interface_type: rusty_router_model::NetworkInterfaceType::GenericInterface,
-            })
+            ("iface0".to_string(), rusty_router_model::NetworkInterface::new("eth0".to_string(), rusty_router_model::NetworkInterfaceType::GenericInterface))
         ].into_iter().collect(), HashMap::new(), HashMap::new());
 
         let mock_netlink_socket: Arc<dyn socket::NetlinkSocket + Send + Sync> = Arc::new(crate::socket::MockNetlinkSocket::new());
@@ -182,10 +185,7 @@ mod tests {
     #[test]
     fn test_list_network_interfaces_existing() {
         let config = rusty_router_model::Router::new(vec![
-            ("iface0".to_string(), rusty_router_model::NetworkInterface {
-                device: "eth0".to_string(),
-                network_interface_type: rusty_router_model::NetworkInterfaceType::GenericInterface,
-            })
+            ("iface0".to_string(), rusty_router_model::NetworkInterface::new("eth0".to_string(), rusty_router_model::NetworkInterfaceType::GenericInterface))
         ].into_iter().collect(), HashMap::new(), HashMap::new());
 
         let mock_netlink_socket: Arc<dyn socket::NetlinkSocket + Send + Sync> = Arc::new(crate::socket::MockNetlinkSocket::new());
@@ -223,7 +223,7 @@ mod tests {
     }
 
     #[test]
-    fn test_list_router_interfaces_existing() {
+    fn test_list_router_interfaces_mapped() {
         let config = rusty_router_model::Router::new(HashMap::new(), HashMap::new(), HashMap::new());
 
         let mock_netlink_socket: Arc<dyn socket::NetlinkSocket + Send + Sync> = Arc::new(crate::socket::MockNetlinkSocket::new());
@@ -254,23 +254,33 @@ mod tests {
     }
 
     #[test]
-    fn test_list_router_interfaces_not_existing() {
-        let config = rusty_router_model::Router::new(HashMap::new(), HashMap::new(), HashMap::new());
+    fn test_list_router_interfaces_unmapped() {
+        let config = rusty_router_model::Router::new(vec![
+            ("iface0".to_string(), rusty_router_model::NetworkInterface::new("eth0".to_string(), rusty_router_model::NetworkInterfaceType::GenericInterface)),
+        ].into_iter().collect(), vec![
+            ("Link1".to_string(), rusty_router_model::RouterInterface::new(None, "iface0".to_string(), vec![])),
+            ("Link2".to_string(), rusty_router_model::RouterInterface::new(None, "iface1".to_string(), vec![])),
+        ].into_iter().collect(), HashMap::new());
 
         let mock_netlink_socket: Arc<dyn socket::NetlinkSocket + Send + Sync> = Arc::new(crate::socket::MockNetlinkSocket::new());
         if let Ok(mut test_data) = LINK_TEST_DATA.lock() {
             test_data.insert(Arc::as_ptr(&mock_netlink_socket) as * const () as usize, HashMap::new());
         }
         if let Ok(mut test_data) = ROUTE_TEST_DATA.lock() {
-            test_data.insert(Arc::as_ptr(&mock_netlink_socket) as * const () as usize, vec![(
-                100 as u64,
-                route::NetlinkRustyRouterDeviceAddressesResult::new(vec![rusty_router_model::IpAddress::new(rusty_router_model::IpAddressType::IpV4, "127.0.0.1".to_string(), 32)])
-            )].into_iter().collect());
+            test_data.insert(Arc::as_ptr(&mock_netlink_socket) as * const () as usize, HashMap::new());
         }
 
         let subject = NetlinkRustyRouter { config: Arc::new(config), netlink_socket: mock_netlink_socket.clone() };
+        // match tokio_test::block_on(subject.list_router_interfaces()) {
+        //     Ok(_) => (),
+        //     Err(_) => (),
+        // }
         match tokio_test::block_on(subject.list_router_interfaces()) {
-            Ok(actual) => assert_eq!(actual, vec![]),
+            Ok(actual) => assert_eq!(actual, vec![rusty_router_model::RouterInterfaceStatus::new(
+                Some("Link1".to_string()), vec![], rusty_router_model::NetworkInterfaceStatus::new(
+                    "eth0".to_string(), Some("iface0".to_string()), rusty_router_model::NetworkInterfaceOperationalState::NotFound
+                )
+            )]),
             Err(_) => panic!("Test Failed"),
         };
     }

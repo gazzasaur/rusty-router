@@ -9,16 +9,16 @@ async fn main() {
     env_logger::init();
 
     let config = rusty_router_model::Router::new(
-        vec![("iface0".to_string(), rusty_router_model::NetworkInterface {
-            device: "eth0".to_string(),
-            network_interface_type: rusty_router_model::NetworkInterfaceType::GenericInterface,
-        }), ("iface1".to_string(), rusty_router_model::NetworkInterface {
-            device: "eth1".to_string(),
-            network_interface_type: rusty_router_model::NetworkInterfaceType::GenericInterface,
-        }), ("iface2".to_string(), rusty_router_model::NetworkInterface {
-            device: "dummy0".to_string(),
-            network_interface_type: rusty_router_model::NetworkInterfaceType::GenericInterface,
-        })].into_iter().collect(),
+        vec![("iface0".to_string(), rusty_router_model::NetworkInterface::new(
+            "eth0".to_string(),
+            rusty_router_model::NetworkInterfaceType::GenericInterface,
+        )), ("iface1".to_string(), rusty_router_model::NetworkInterface::new(
+            "eth1".to_string(),
+            rusty_router_model::NetworkInterfaceType::GenericInterface,
+        )), ("iface2".to_string(), rusty_router_model::NetworkInterface::new(
+            "dummy0".to_string(),
+            rusty_router_model::NetworkInterfaceType::GenericInterface,
+        ))].into_iter().collect(),
         vec![("Inside".to_string(), rusty_router_model::RouterInterface {
             vrf: None,
             network_interface: "iface0".to_string(),

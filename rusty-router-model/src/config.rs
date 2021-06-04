@@ -28,8 +28,21 @@ impl Router {
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct NetworkInterface {
-    pub device: String,
-    pub network_interface_type: NetworkInterfaceType,
+    device: String,
+    network_interface_type: NetworkInterfaceType,
+}
+impl NetworkInterface {
+    pub fn new(device: String, network_interface_type: NetworkInterfaceType) -> NetworkInterface {
+        NetworkInterface { device, network_interface_type }
+    }
+
+    pub fn get_device(&self) -> &String {
+        &self.device
+    }
+
+    pub fn get_network_interface_type(&self) -> &NetworkInterfaceType {
+        &self.network_interface_type
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Hash)]
@@ -55,6 +68,11 @@ pub struct RouterInterface {
     pub vrf: Option<String>,
     pub network_interface: String,
     pub ip_addresses: Vec<IpAddress>,
+}
+impl RouterInterface {
+    pub fn new(vrf: Option<String>, network_interface: String, ip_addresses: Vec<IpAddress>) -> RouterInterface {
+        RouterInterface { vrf, network_interface, ip_addresses }
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Hash)]
