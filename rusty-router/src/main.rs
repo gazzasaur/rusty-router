@@ -19,19 +19,19 @@ async fn main() {
             "dummy0".to_string(),
             rusty_router_model::NetworkInterfaceType::GenericInterface,
         ))].into_iter().collect(),
-        vec![("Inside".to_string(), rusty_router_model::RouterInterface {
-            vrf: None,
-            network_interface: "iface0".to_string(),
-            ip_addresses: vec![],
-        }), ("Outside".to_string(), rusty_router_model::RouterInterface {
-            vrf: None,
-            network_interface: "iface1".to_string(),
-            ip_addresses: vec![],
-        }), ("Unused".to_string(), rusty_router_model::RouterInterface {
-            vrf: None,
-            network_interface: "doesnotexist".to_string(),
-            ip_addresses: vec![],
-        })].into_iter().collect(),
+        vec![("Inside".to_string(), rusty_router_model::RouterInterface::new(
+            None,
+            "iface0".to_string(),
+            vec![],
+        )), ("Outside".to_string(), rusty_router_model::RouterInterface::new(
+            None,
+            "iface1".to_string(),
+            vec![],
+        )), ("Unused".to_string(), rusty_router_model::RouterInterface::new(
+            None,
+            "doesnotexist".to_string(),
+            vec![],
+        ))].into_iter().collect(),
         HashMap::new(),
     );
 

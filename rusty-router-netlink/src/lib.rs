@@ -77,7 +77,7 @@ impl RustyRouter for NetlinkRustyRouter {
 
     async fn list_router_interfaces(&self) -> Result<Vec<rusty_router_model::RouterInterfaceStatus>, Box<dyn Error>> {
         let mut addresses = vec![];
-        let mut network_router_interfaces: HashMap<&String, &String> = self.config.get_router_interfaces().iter().map(|(name, interface)| (&interface.network_interface, name)).collect();
+        let mut network_router_interfaces: HashMap<&String, &String> = self.config.get_router_interfaces().iter().map(|(name, interface)| (interface.get_network_interface(), name)).collect();
 
         self.perform_list_mapped_router_interfaces(&mut network_router_interfaces, &mut addresses).await?;
         network_router_interfaces.drain().for_each(|(net_name, addr_name)| {
@@ -271,10 +271,6 @@ mod tests {
         }
 
         let subject = NetlinkRustyRouter { config: Arc::new(config), netlink_socket: mock_netlink_socket.clone() };
-        // match tokio_test::block_on(subject.list_router_interfaces()) {
-        //     Ok(_) => (),
-        //     Err(_) => (),
-        // }
         match tokio_test::block_on(subject.list_router_interfaces()) {
             Ok(actual) => assert_eq!(actual, vec![rusty_router_model::RouterInterfaceStatus::new(
                 Some("Link1".to_string()), vec![], rusty_router_model::NetworkInterfaceStatus::new(

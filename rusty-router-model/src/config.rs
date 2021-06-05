@@ -65,13 +65,25 @@ pub enum VrfTable {
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct RouterInterface {
-    pub vrf: Option<String>,
-    pub network_interface: String,
-    pub ip_addresses: Vec<IpAddress>,
+    vrf: Option<String>,
+    network_interface: String,
+    ip_addresses: Vec<IpAddress>,
 }
 impl RouterInterface {
     pub fn new(vrf: Option<String>, network_interface: String, ip_addresses: Vec<IpAddress>) -> RouterInterface {
         RouterInterface { vrf, network_interface, ip_addresses }
+    }
+
+    pub fn get_vrf(&self) -> &Option<String> {
+        &self.vrf
+    }
+
+    pub fn get_network_interface(&self) -> &String {
+        &self.network_interface
+    }
+
+    pub fn get_ip_addresses(&self) -> &Vec<IpAddress> {
+        &self.ip_addresses
     }
 }
 
