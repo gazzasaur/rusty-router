@@ -80,3 +80,28 @@ impl NetlinkRustyRouterLink {
         })))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use mockall::predicate;
+
+    #[test]
+    pub fn test_list_network_interfaces_empty() {
+        let mut mock_socket = crate::socket::MockNetlinkSocket::new();
+        mock_socket.expect_send_message().with(predicate::always()).times(1).returning(|actual_packet| {
+            let link_message = netlink_packet_route::RtnlMessage::GetLink(netlink_packet_route::LinkMessage::default());
+            let mut packet: netlink_packet_core::NetlinkMessage<netlink_packet_route::RtnlMessage> = packet::build_default_packet(link_message);
+            packet.header.sequence_number = actual_packet.header.sequence_number;
+
+            assert_eq!(actual_packet, packet);
+            Ok(vec![])
+        });
+
+        let socket: Arc<dyn crate::socket::NetlinkSocket + Send + Sync> = Arc::new(mock_socket);
+        match tokio_test::block_on(NetlinkRustyRouterLink::list_network_interfaces(&socket)) {
+            Ok(actual) => assert_eq!(actual, HashMap::new()),
+            Err(_) => panic!("Test Failed"),
+        }
+    }
+}
