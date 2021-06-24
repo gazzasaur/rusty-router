@@ -3,5 +3,6 @@
 members = [
     "rusty-router",
     "rusty-router-model",
-    "rusty-router-netlink",
+
+    "rusty-router-platform-linux",
 ]

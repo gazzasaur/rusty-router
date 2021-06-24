@@ -9,6 +9,6 @@ env_logger = "0.8"
 
 serde_json = "1.0"
 rusty-router-model = { path = "../rusty-router-model" }
-rusty-router-netlink = { path = "../rusty-router-netlink" }
+rusty-router-platform-linux = { path = "../rusty-router-platform-linux" }
 
 tokio = { version = "1.5", features = ["full"] }

@@ -1,5 +1,5 @@
 [package]
-name = "rusty-router-netlink"
+name = "rusty-router-platform-linux"
 version = "0.1.0"
 authors = ["gazzasaur"]
 edition = "2018"

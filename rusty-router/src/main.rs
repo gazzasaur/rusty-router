@@ -35,11 +35,11 @@ async fn main() {
         HashMap::new(),
     );
 
-    let socket = match rusty_router_netlink::socket::DefaultNetlinkSocket::new() {
+    let socket = match rusty_router_platform_linux::socket::DefaultNetlinkSocket::new() {
         Ok(socket) => socket,
         Err(_) => return (),
     };
-    let nl = rusty_router_netlink::NetlinkRustyRouter::new(config, Arc::new(socket));
+    let nl = rusty_router_platform_linux::NetlinkRustyRouter::new(config, Arc::new(socket));
 
     if let Ok(mut interfaces) = nl.list_network_interfaces().await {
         interfaces.sort_by(|a, b| {
@@ -114,7 +114,7 @@ async fn main() {
         println!();
     }
 
-    // rusty_router_netlink::socket::DefaultNetlinkSocket::new().unwrap().receive_messages(|_a| {
+    // rusty_router_platform_linux::socket::DefaultNetlinkSocket::new().unwrap().receive_messages(|_a| {
     //     println!("{:?}", _a);
     // }).await.unwrap();
 }
