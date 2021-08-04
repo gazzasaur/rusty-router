@@ -202,7 +202,6 @@ mod test {
             let mut rng = rand::thread_rng();
             let data: String = std::iter::repeat(()).map(|()| rng.sample(rand::distributions::Alphanumeric)).map(char::from).take(128).collect();
             nix::sys::socket::send(self.fd, data.as_bytes(), super::MsgFlags::empty()).expect("Failed to send data.");
-            nix::sys::socket::send(self.fd, data.as_bytes(), super::MsgFlags::empty()).expect("Failed to send data.");
         }
     }
 
@@ -213,7 +212,7 @@ mod test {
         let subject = std::sync::Arc::new(tokio::sync::Mutex::new(super::Poller::new()?));
         let items = std::sync::Arc::new(tokio::sync::RwLock::new(Vec::new()));
         println!("Creating Sockets");
-        for _ in (0 as i32)..(1000 as i32) {
+        for _ in (0 as i32)..(100 as i32) {
             let sockets = socket::socketpair(socket::AddressFamily::Unix, socket::SockType::Stream, None, socket::SockFlag::SOCK_NONBLOCK)?;
 
             let subject = subject.lock().await;
