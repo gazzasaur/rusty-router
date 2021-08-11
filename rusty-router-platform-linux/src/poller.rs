@@ -9,70 +9,51 @@ use nix::sys::socket::MsgFlags;
 use std::sync::atomic::{AtomicBool, Ordering};
 use nix::sys::epoll::{EpollCreateFlags, EpollEvent, EpollFlags, EpollOp, epoll_create1, epoll_ctl, epoll_wait};
 
-/**
- * Playing around with epoll (and other forms of IO) to find one that will fit this project.
- * I almost have the balance right.  Interesting points, the buffer is 65535 which is likely too large, the MTU size will do.
- * The error handling needs to be fixed up.
- */
-
-struct AutoCloseFd {
-    fd: RawFd,
-}
-impl AutoCloseFd {
-    pub fn new(fd: RawFd) -> AutoCloseFd {
-        AutoCloseFd { fd }
-    }
-
-    pub fn get(&self) -> &RawFd {
-        &self.fd
-    }
-}
-impl Drop for AutoCloseFd {
-    fn drop(&mut self) {
-        if let Err(error) = close(self.fd) {
-            warn!("Failed to close epoll fd: {}", error);
-        }
-    }
-}
-
 #[async_trait]
 pub trait SocketHandler {
     async fn on_recv(&self, data: Vec<u8>);
+    async fn on_error(&self, message: String);
 }
 
 pub struct PollerItem {
-    fd: Arc<AutoCloseFd>,
+    fd: RawFd,
     socket_handler: Arc<Box<dyn SocketHandler + Send + Sync>>,
 }
 impl PollerItem {
     pub fn new(fd: RawFd, socket_handler: Box<dyn SocketHandler + Send + Sync>) -> PollerItem {
-        PollerItem { fd: Arc::new(AutoCloseFd::new(fd)), socket_handler: Arc::new(socket_handler) }
-    }
-
-    pub fn get_fd(&self) -> &RawFd {
-        self.fd.get()
+        PollerItem { fd, socket_handler: Arc::new(socket_handler) }
     }
 
     pub fn send(&self, buffer: &Vec<u8>) -> Result<usize, Box<dyn std::error::Error>> {
-        let fd = self.fd.clone();
-        return Ok(nix::sys::socket::send(*fd.get(), &buffer[..], MsgFlags::empty())?);
+        let fd = self.fd;
+        return Ok(nix::sys::socket::send(fd, &buffer[..], MsgFlags::empty())?);
     }
 
     pub async fn recv(&self) {
-        let fd = *self.fd.get();
+        let fd = self.fd;
         let mut buffer = [0 as u8; 65535];
         loop {
             match nix::sys::socket::recv(fd, &mut buffer, MsgFlags::empty()) {
                 Ok(size) => self.socket_handler.on_recv(buffer[0..size].to_vec()).await,
                 Err(nix::Error::Sys(nix::errno::Errno::EAGAIN)) => return,
-                Err(e) => error!("Failed to read from socket: {:?}", e),
+                Err(nix::Error::Sys(errno)) => self.socket_handler.on_error(format!("Failed to read from socket: {}", errno)).await,
+                Err(e) => {
+                    error!("Failed to read from socket: {:?}", e)
+                },
             }
+        }
+    }
+}
+impl Drop for PollerItem {
+    fn drop(&mut self) {
+        if let Err(error) = close(self.fd) {
+            warn!("Failed to close fd: {}", error);
         }
     }
 }
 
 pub struct Poller {
-    epoll_fd: Arc<AutoCloseFd>,
+    epoll_fd: RawFd,
     poller_running: Arc<AtomicBool>,
     controller_running: Arc<AtomicBool>,
     handlers: Arc<RwLock<HashMap<u64, Arc<PollerItem>>>>,
@@ -81,13 +62,13 @@ impl Poller {
     pub fn new() -> Result<Poller, Box<dyn std::error::Error>> {
         let poller_running = Arc::new(AtomicBool::new(true));
         let controller_running = Arc::new(AtomicBool::new(true));
-        let epoll_fd = Arc::new(AutoCloseFd::new(epoll_create1(EpollCreateFlags::empty())?));
-
+        
         let handlers = Arc::new(RwLock::new(HashMap::new()));
         let task_handlers = handlers.clone();
+        let epoll_fd = epoll_create1(EpollCreateFlags::empty())?;
 
         let poller = Poller {
-            epoll_fd: epoll_fd.clone(),
+            epoll_fd,
             poller_running: poller_running.clone(),
             controller_running: controller_running.clone(),
             handlers,
@@ -101,8 +82,7 @@ impl Poller {
         Ok(poller)
     }
 
-    fn poller_task(epoll_fd: Arc<AutoCloseFd>, poller_running: Arc<AtomicBool>, controller_running: Arc<AtomicBool>, handlers: Arc<RwLock<HashMap<u64, Arc<PollerItem>>>>) {
-        let epoll_fd = *epoll_fd.get();
+    fn poller_task(epoll_fd: RawFd, poller_running: Arc<AtomicBool>, controller_running: Arc<AtomicBool>, handlers: Arc<RwLock<HashMap<u64, Arc<PollerItem>>>>) {
         let mut buffer = [EpollEvent::empty(); 100];
 
         while poller_running.load(Ordering::SeqCst) && controller_running.load(Ordering::SeqCst) {
@@ -136,13 +116,12 @@ impl Poller {
 
     /* Once called, the fd belongs to this class and will be closed by it */
     pub async fn add_item(&self, fd: RawFd, socket_handler: Box<dyn SocketHandler + Send + Sync>) -> Result<Arc<PollerItem>, Box<dyn std::error::Error>> {
-        let epoll_fd = *self.epoll_fd.get();
+        let epoll_fd = self.epoll_fd;
         let handlers = self.handlers.clone();
 
         let handle_id: u64 = rand::random();
         let poller_item = Arc::new(PollerItem::new(fd, socket_handler));
-//        let mut event = EpollEvent::new(EpollFlags::EPOLLIN | EpollFlags::EPOLLOUT | EpollFlags::EPOLLHUP | EpollFlags::EPOLLET, handle_id);
-        let mut event = EpollEvent::new(EpollFlags::EPOLLET | EpollFlags::EPOLLIN, handle_id);
+        let mut event = EpollEvent::new(EpollFlags::EPOLLIN | EpollFlags::EPOLLHUP | EpollFlags::EPOLLET, handle_id);
         epoll_ctl(epoll_fd, EpollOp::EpollCtlAdd, fd, Some(&mut event))?;
 
         let mut handlers = handlers.write().await;
@@ -152,6 +131,9 @@ impl Poller {
 }
 impl Drop for Poller {
     fn drop(&mut self) {
+        if let Err(error) = close(self.epoll_fd) {
+            warn!("Failed to close epoll fd: {}", error);
+        }
         self.poller_running.store(false, Ordering::SeqCst);
         self.controller_running.store(false, Ordering::SeqCst);
     }
@@ -162,23 +144,11 @@ mod test {
     use std::sync::atomic::Ordering;
 
     use async_trait::async_trait;
+    use log::error;
     use nix::sys::socket;
     use rand::Rng;
 
     use super::SocketHandler;
-
-    #[tokio::test]
-    async fn test_autoclose_fd() -> Result<(), Box<dyn std::error::Error>> {
-        match nix::fcntl::fcntl({
-            let subject = super::AutoCloseFd::new(nix::fcntl::open("/tmp", nix::fcntl::OFlag::O_TMPFILE | nix::fcntl::OFlag::O_RDWR, nix::sys::stat::Mode::empty())?);
-            nix::fcntl::fcntl(*subject.get(), nix::fcntl::FcntlArg::F_GETFD)?;
-            *subject.get()
-        }, nix::fcntl::FcntlArg::F_GETFD) {
-            Ok(_) => assert!(false, "Expected fd to be invalid"),
-            Err(_) => (),
-        };
-        Ok(())
-    }
 
     struct EchoCallback {
         fd: super::RawFd,
@@ -202,6 +172,10 @@ mod test {
             let mut rng = rand::thread_rng();
             let data: String = std::iter::repeat(()).map(|()| rng.sample(rand::distributions::Alphanumeric)).map(char::from).take(128).collect();
             nix::sys::socket::send(self.fd, data.as_bytes(), super::MsgFlags::empty()).expect("Failed to send data.");
+        }
+
+        async fn on_error(&self, message: String) {
+            error!("{}", message)
         }
     }
 

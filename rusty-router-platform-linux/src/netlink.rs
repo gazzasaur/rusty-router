@@ -3,6 +3,7 @@ use mockall::predicate::*;
 
 use async_trait::async_trait;
 
+use rand::Rng;
 use std::sync::Arc;
 use std::error::Error;
 use tokio::sync::Mutex;
@@ -12,6 +13,7 @@ use netlink_sys;
 use netlink_packet_core;
 use netlink_packet_route;
 use netlink_sys::protocols;
+use netlink_packet_route::constants;
 
 // This package is the wrapper interface around the kernel.
 // This should be kept as thin as possible as it it integ tested but not unit tested.
@@ -81,4 +83,16 @@ impl NetlinkSocket for DefaultNetlinkSocket {
         }).await?;
         Ok(received_messages)
     }
+}
+
+pub fn build_default_packet(message: netlink_packet_route::RtnlMessage) -> netlink_packet_core::NetlinkMessage<netlink_packet_route::RtnlMessage> {
+    let mut packet = netlink_packet_core::NetlinkMessage {
+        header: netlink_packet_core::NetlinkHeader::default(),
+        payload: netlink_packet_core::NetlinkPayload::from(message),
+    };
+    packet.header.flags = constants::NLM_F_DUMP | constants::NLM_F_REQUEST;
+    packet.header.sequence_number = rand::thread_rng().gen();
+    packet.finalize();
+
+    return packet;
 }

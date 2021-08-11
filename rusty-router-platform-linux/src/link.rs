@@ -8,8 +8,7 @@ use netlink_packet_core;
 use netlink_packet_route;
 use netlink_packet_route::rtnl::link::nlas;
 
-use crate::packet;
-use crate::socket::NetlinkSocket;
+use crate::netlink;
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct NetlinkRustyRouterLinkStatus {
@@ -38,9 +37,9 @@ impl NetlinkRustyRouterLinkStatus {
 pub struct NetlinkRustyRouterLink {
 }
 impl NetlinkRustyRouterLink {
-    pub async fn list_network_interfaces(socket: &Arc<dyn NetlinkSocket + Send + Sync>) -> Result<HashMap<u64, NetlinkRustyRouterLinkStatus>, Box<dyn Error>> {
+    pub async fn list_network_interfaces(socket: &Arc<dyn netlink::NetlinkSocket + Send + Sync>) -> Result<HashMap<u64, NetlinkRustyRouterLinkStatus>, Box<dyn Error>> {
         let link_message = netlink_packet_route::RtnlMessage::GetLink(netlink_packet_route::LinkMessage::default());
-        let packet: netlink_packet_core::NetlinkMessage<netlink_packet_route::RtnlMessage> = packet::build_default_packet(link_message);
+        let packet: netlink_packet_core::NetlinkMessage<netlink_packet_route::RtnlMessage> = netlink::build_default_packet(link_message);
 
         let messages = socket.send_message(packet).await?;
 
@@ -88,17 +87,17 @@ mod tests {
 
     #[test]
     pub fn test_list_network_interfaces_empty() {
-        let mut mock_socket = crate::socket::MockNetlinkSocket::new();
+        let mut mock_socket = netlink::MockNetlinkSocket::new();
         mock_socket.expect_send_message().with(predicate::always()).times(1).returning(|actual_packet| {
             let link_message = netlink_packet_route::RtnlMessage::GetLink(netlink_packet_route::LinkMessage::default());
-            let mut packet: netlink_packet_core::NetlinkMessage<netlink_packet_route::RtnlMessage> = packet::build_default_packet(link_message);
+            let mut packet: netlink_packet_core::NetlinkMessage<netlink_packet_route::RtnlMessage> = netlink::build_default_packet(link_message);
             packet.header.sequence_number = actual_packet.header.sequence_number;
 
             assert_eq!(actual_packet, packet);
             Ok(vec![])
         });
 
-        let socket: Arc<dyn crate::socket::NetlinkSocket + Send + Sync> = Arc::new(mock_socket);
+        let socket: Arc<dyn netlink::NetlinkSocket + Send + Sync> = Arc::new(mock_socket);
         match tokio_test::block_on(NetlinkRustyRouterLink::list_network_interfaces(&socket)) {
             Ok(actual) => assert_eq!(actual, HashMap::new()),
             Err(_) => panic!("Test Failed"),

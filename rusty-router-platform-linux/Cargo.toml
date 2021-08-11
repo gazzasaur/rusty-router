@@ -17,10 +17,10 @@ chrono = "0.4"
 anyhow = "1.0"
 rtnetlink = "0.7"
 thiserror = "1.0"
-netlink-sys = "0.6"
 netlink-packet-core = "0.2"
 netlink-packet-route = "0.7"
 rusty-router-model = { path = "../rusty-router-model" }
+netlink-sys = { version = "0.7", features = ["tokio_socket"] }
 
 [dev-dependencies]
 tokio-test = "0.4"

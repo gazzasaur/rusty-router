@@ -10,16 +10,15 @@ use rusty_router_model::RustyRouter;
 
 pub mod link;
 pub mod route;
-pub mod packet;
 pub mod poller;
-pub mod socket;
+pub mod netlink;
 
 pub struct NetlinkRustyRouter {
     config: Arc<rusty_router_model::Router>,
-    netlink_socket: Arc<dyn socket::NetlinkSocket + Send + Sync>,
+    netlink_socket: Arc<dyn netlink::NetlinkSocket + Send + Sync>,
 }
 impl NetlinkRustyRouter {
-    pub fn new(config: rusty_router_model::Router, netlink_socket: Arc<dyn socket::NetlinkSocket + Send + Sync>) -> NetlinkRustyRouter {
+    pub fn new(config: rusty_router_model::Router, netlink_socket: Arc<dyn netlink::NetlinkSocket + Send + Sync>) -> NetlinkRustyRouter {
         NetlinkRustyRouter {
             config: Arc::new(config),
             netlink_socket: netlink_socket,
@@ -107,14 +106,14 @@ mod tests {
         static ref ROUTE_TEST_DATA: Arc<Mutex<HashMap<usize, HashMap<u64, route::NetlinkRustyRouterDeviceAddressesResult>>>> = Arc::new(Mutex::new(HashMap::new()));
     }
 
-    pub async fn list_network_interfaces(socket: &Arc<dyn socket::NetlinkSocket + Send + Sync>) -> Result<HashMap<u64, link::NetlinkRustyRouterLinkStatus>, Box<dyn Error>> {
+    pub async fn list_network_interfaces(socket: &Arc<dyn netlink::NetlinkSocket + Send + Sync>) -> Result<HashMap<u64, link::NetlinkRustyRouterLinkStatus>, Box<dyn Error>> {
         if let Ok(mut test_data) = LINK_TEST_DATA.lock() { if let Some(test_value) = test_data.remove(&(Arc::as_ptr(socket) as *const () as usize)) {
             return Ok(test_value)
         }}
         panic!("No test data found");
     }
 
-    pub async fn list_router_interfaces(socket: &Arc<dyn socket::NetlinkSocket + Send + Sync>) -> Result<HashMap<u64, route::NetlinkRustyRouterDeviceAddressesResult>, Box<dyn Error>> {
+    pub async fn list_router_interfaces(socket: &Arc<dyn netlink::NetlinkSocket + Send + Sync>) -> Result<HashMap<u64, route::NetlinkRustyRouterDeviceAddressesResult>, Box<dyn Error>> {
         if let Ok(mut test_data) = ROUTE_TEST_DATA.lock() { if let Some(test_value) = test_data.remove(&(Arc::as_ptr(socket) as *const () as usize)) {
             return Ok(test_value)
         }}
@@ -125,7 +124,7 @@ mod tests {
     fn test_list_network_interfaces_empty() {
         let config = rusty_router_model::Router::new(HashMap::new(), HashMap::new(), HashMap::new());
 
-        let mock_netlink_socket: Arc<dyn socket::NetlinkSocket + Send + Sync> = Arc::new(crate::socket::MockNetlinkSocket::new());
+        let mock_netlink_socket: Arc<dyn netlink::NetlinkSocket + Send + Sync> = Arc::new(netlink::MockNetlinkSocket::new());
         if let Ok(mut test_data) = LINK_TEST_DATA.lock() {
             test_data.insert(Arc::as_ptr(&mock_netlink_socket) as * const () as usize, HashMap::new());
         }
@@ -150,7 +149,7 @@ mod tests {
     fn perform_list_network_interfaces_unassigned(state: rusty_router_model::NetworkInterfaceOperationalState) {
         let config = rusty_router_model::Router::new(HashMap::new(), HashMap::new(), HashMap::new());
 
-        let mock_netlink_socket: Arc<dyn socket::NetlinkSocket + Send + Sync> = Arc::new(crate::socket::MockNetlinkSocket::new());
+        let mock_netlink_socket: Arc<dyn netlink::NetlinkSocket + Send + Sync> = Arc::new(netlink::MockNetlinkSocket::new());
         if let Ok(mut test_data) = LINK_TEST_DATA.lock() {
             test_data.insert(Arc::as_ptr(&mock_netlink_socket) as * const () as usize, vec![(
                 100 as u64,
@@ -171,7 +170,7 @@ mod tests {
             ("iface0".to_string(), rusty_router_model::NetworkInterface::new("eth0".to_string(), rusty_router_model::NetworkInterfaceType::GenericInterface))
         ].into_iter().collect(), HashMap::new(), HashMap::new());
 
-        let mock_netlink_socket: Arc<dyn socket::NetlinkSocket + Send + Sync> = Arc::new(crate::socket::MockNetlinkSocket::new());
+        let mock_netlink_socket: Arc<dyn netlink::NetlinkSocket + Send + Sync> = Arc::new(netlink::MockNetlinkSocket::new());
         if let Ok(mut test_data) = LINK_TEST_DATA.lock() {
             test_data.insert(Arc::as_ptr(&mock_netlink_socket) as * const () as usize, HashMap::new());
         }
@@ -189,7 +188,7 @@ mod tests {
             ("iface0".to_string(), rusty_router_model::NetworkInterface::new("eth0".to_string(), rusty_router_model::NetworkInterfaceType::GenericInterface))
         ].into_iter().collect(), HashMap::new(), HashMap::new());
 
-        let mock_netlink_socket: Arc<dyn socket::NetlinkSocket + Send + Sync> = Arc::new(crate::socket::MockNetlinkSocket::new());
+        let mock_netlink_socket: Arc<dyn netlink::NetlinkSocket + Send + Sync> = Arc::new(netlink::MockNetlinkSocket::new());
         if let Ok(mut test_data) = LINK_TEST_DATA.lock() {
             test_data.insert(Arc::as_ptr(&mock_netlink_socket) as * const () as usize, vec![(
                 100 as u64,
@@ -208,7 +207,7 @@ mod tests {
     fn test_list_router_interfaces_empty() {
         let config = rusty_router_model::Router::new(HashMap::new(), HashMap::new(), HashMap::new());
 
-        let mock_netlink_socket: Arc<dyn socket::NetlinkSocket + Send + Sync> = Arc::new(crate::socket::MockNetlinkSocket::new());
+        let mock_netlink_socket: Arc<dyn netlink::NetlinkSocket + Send + Sync> = Arc::new(netlink::MockNetlinkSocket::new());
         if let Ok(mut test_data) = LINK_TEST_DATA.lock() {
             test_data.insert(Arc::as_ptr(&mock_netlink_socket) as * const () as usize, HashMap::new());
         }
@@ -227,7 +226,7 @@ mod tests {
     fn test_list_router_interfaces_mapped() {
         let config = rusty_router_model::Router::new(HashMap::new(), HashMap::new(), HashMap::new());
 
-        let mock_netlink_socket: Arc<dyn socket::NetlinkSocket + Send + Sync> = Arc::new(crate::socket::MockNetlinkSocket::new());
+        let mock_netlink_socket: Arc<dyn netlink::NetlinkSocket + Send + Sync> = Arc::new(netlink::MockNetlinkSocket::new());
         if let Ok(mut test_data) = LINK_TEST_DATA.lock() {
             test_data.insert(Arc::as_ptr(&mock_netlink_socket) as * const () as usize, vec![(
                 100 as u64,
@@ -263,7 +262,7 @@ mod tests {
             ("Link2".to_string(), rusty_router_model::RouterInterface::new(None, "iface1".to_string(), vec![])),
         ].into_iter().collect(), HashMap::new());
 
-        let mock_netlink_socket: Arc<dyn socket::NetlinkSocket + Send + Sync> = Arc::new(crate::socket::MockNetlinkSocket::new());
+        let mock_netlink_socket: Arc<dyn netlink::NetlinkSocket + Send + Sync> = Arc::new(netlink::MockNetlinkSocket::new());
         if let Ok(mut test_data) = LINK_TEST_DATA.lock() {
             test_data.insert(Arc::as_ptr(&mock_netlink_socket) as * const () as usize, HashMap::new());
         }

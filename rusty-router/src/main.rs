@@ -35,7 +35,7 @@ async fn main() {
         HashMap::new(),
     );
 
-    let socket = match rusty_router_platform_linux::socket::DefaultNetlinkSocket::new() {
+    let socket = match rusty_router_platform_linux::netlink::DefaultNetlinkSocket::new() {
         Ok(socket) => socket,
         Err(_) => return (),
     };

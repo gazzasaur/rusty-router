@@ -7,10 +7,8 @@ use log::warn;
 
 use netlink_packet_route::rtnl::address::nlas;
 
+use crate::netlink;
 use rusty_router_model;
-
-use crate::packet;
-use crate::socket::NetlinkSocket;
 
 #[derive(Debug)]
 pub struct NetlinkRustyRouterAddressResult {
@@ -39,9 +37,9 @@ impl NetlinkRustyRouterDeviceAddressesResult {
 pub struct NetlinkRustyRouterAddress {
 }
 impl NetlinkRustyRouterAddress {
-    pub async fn list_router_interfaces(socket: &Arc<dyn NetlinkSocket + Send + Sync>) -> Result<HashMap<u64, NetlinkRustyRouterDeviceAddressesResult>, Box<dyn Error>> {
+    pub async fn list_router_interfaces(socket: &Arc<dyn netlink::NetlinkSocket + Send + Sync>) -> Result<HashMap<u64, NetlinkRustyRouterDeviceAddressesResult>, Box<dyn Error>> {
         let link_message = netlink_packet_route::RtnlMessage::GetAddress(netlink_packet_route::AddressMessage::default());
-        let packet: netlink_packet_core::NetlinkMessage<netlink_packet_route::RtnlMessage> = packet::build_default_packet(link_message);
+        let packet: netlink_packet_core::NetlinkMessage<netlink_packet_route::RtnlMessage> = netlink::build_default_packet(link_message);
         let messages = socket.send_message(packet).await?;
 
         let mut result: HashMap<u64, NetlinkRustyRouterDeviceAddressesResult> = HashMap::new();
