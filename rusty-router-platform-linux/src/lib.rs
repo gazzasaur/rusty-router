@@ -10,7 +10,7 @@ use rusty_router_model::RustyRouter;
 
 pub mod link;
 pub mod route;
-pub mod poller;
+pub mod network;
 pub mod netlink;
 
 pub struct NetlinkRustyRouter {
