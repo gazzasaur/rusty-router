@@ -4,5 +4,7 @@ members = [
     "rusty-router",
     "rusty-router-model",
     "rusty-router-platform-linux",
+
+    "rusty-router-proto-common",
     "rusty-router-proto-ospfv2",
 ]
