@@ -70,3 +70,30 @@ impl InternetChecksum {
     }
 }
 
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    pub fn test_checksum() -> Result<(), ProtocolParseError> {
+        assert_eq!(InternetChecksum::checksum(&[])?, 65535);
+        assert_eq!(InternetChecksum::checksum(&[0x80])?, 32767);
+        assert_eq!(InternetChecksum::checksum(&[0x00, 0x01])?, 65534);
+        assert_eq!(InternetChecksum::checksum(&[0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF])?, 0);
+        assert_eq!(InternetChecksum::checksum(&[0x01, 0x03, 0x07, 0x0F, 0x11, 0x33, 0x77, 0xFF])?, 28347);
+        Ok(())
+    }
+
+    #[test]
+    pub fn test_checksum_update() -> Result<(), ProtocolParseError> {
+        let mut checksum = InternetChecksum::new();
+        checksum.add(&[0x01, 0x03, 0x07, 0x0F, 0x11, 0x33, 0x77, 0xFF, 0x10, 0x30, 0x77, 0xF0, 0x11, 0x33, 0x77, 0xFF])?;
+        assert_eq!(checksum.calculate(), 23912);
+
+        checksum.subtract(&[0x10, 0x30, 0x77, 0xFF])?;
+        assert_eq!(checksum.calculate(), 58775);
+        assert_eq!(InternetChecksum::checksum(&[0x01, 0x03, 0x07, 0x0F, 0x11, 0x33, 0x77, 0xF0, 0x11, 0x33, 0x77, 0xFF])?, 58775);
+
+        Ok(())
+    }
+}
