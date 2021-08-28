@@ -13,6 +13,13 @@ const NATIVE_NUMBER_FROM_BYTES: fn([u8; 8]) -> u64 = u64::from_le_bytes;
 #[cfg(target_endian = "little")]
 const NATIVE_NUMBER_FROM_NETWORK: bool = true;
 
+#[macro_export]
+macro_rules! from_be_bytes {
+    ($ty:ty, $label:ident, $value:ident) => {{
+        <$ty>::from_be_bytes($value.try_into().map_err(|_| ProtocolParseError::ConversionError($label, file!(), line!()))?)
+    }};
+}
+
 pub struct InternetChecksum {
     accumulator: u128,
 }
@@ -72,7 +79,40 @@ impl InternetChecksum {
 
 #[cfg(test)]
 mod test {
+    use std::panic;
+
     use super::*;
+
+    #[test]
+    pub fn test_conversion() -> Result<(), ProtocolParseError> {
+        let label = "Label";
+
+        let value = vec![0xA1, 0xB3];
+        let value_ref = &value[..];
+        assert_eq!(from_be_bytes!(u16, label, value_ref), 0xA1B3);
+
+        Ok(())
+    }
+
+    #[test]
+    pub fn test_conversion_failed() -> Result<(), ProtocolParseError> {
+        fn perform_test() -> Result<(), ProtocolParseError> {
+            let label = "Label";
+            let value = vec![0xA1];
+            let value_ref = &value[..];
+            from_be_bytes!(u16, label, value_ref);
+            Ok(())
+        }
+        if let Err(ProtocolParseError::ConversionError(error_label, error_file, error_line)) = perform_test() {
+            assert_eq!(error_label, "Label");
+            assert_eq!(error_line, line!() - 5);
+            assert_eq!(error_file, "rusty-router-proto-common/src/lib.rs");
+        } else {
+            panic!("Expected failure");
+        }
+
+        Ok(())
+    }
 
     #[test]
     pub fn test_checksum() -> Result<(), ProtocolParseError> {
