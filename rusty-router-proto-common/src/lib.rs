@@ -15,10 +15,7 @@ const NATIVE_NUMBER_FROM_NETWORK: bool = true;
 
 #[macro_export]
 macro_rules! from_be_bytes {
-    // ($ty:ty, $label:ident, $value:ident) => {{
-    //     <$ty>::from_be_bytes($value.try_into().map_err(|_| ProtocolParseError::ConversionError($label, file!(), line!()))?)
-    // }};
-    ($ty:ty, $label:ident, $value:expr) => {{
+    ($ty:ty, $label:expr, $value:expr) => {{
         <$ty>::from_be_bytes($value.try_into().map_err(|_| ProtocolParseError::ConversionError($label, file!(), line!()))?)
     }};
 }
