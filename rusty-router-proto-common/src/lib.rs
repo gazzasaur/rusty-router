@@ -15,7 +15,10 @@ const NATIVE_NUMBER_FROM_NETWORK: bool = true;
 
 #[macro_export]
 macro_rules! from_be_bytes {
-    ($ty:ty, $label:ident, $value:ident) => {{
+    // ($ty:ty, $label:ident, $value:ident) => {{
+    //     <$ty>::from_be_bytes($value.try_into().map_err(|_| ProtocolParseError::ConversionError($label, file!(), line!()))?)
+    // }};
+    ($ty:ty, $label:ident, $value:expr) => {{
         <$ty>::from_be_bytes($value.try_into().map_err(|_| ProtocolParseError::ConversionError($label, file!(), line!()))?)
     }};
 }
@@ -78,13 +81,13 @@ impl InternetChecksum {
 }
 
 #[cfg(test)]
-mod test {
+mod tests {
     use std::panic;
 
     use super::*;
 
     #[test]
-    pub fn test_conversion() -> Result<(), ProtocolParseError> {
+    pub fn test_conversion_ident() -> Result<(), ProtocolParseError> {
         let label = "Label";
 
         let value = vec![0xA1, 0xB3];
@@ -95,12 +98,38 @@ mod test {
     }
 
     #[test]
-    pub fn test_conversion_failed() -> Result<(), ProtocolParseError> {
+    pub fn test_conversion_literal() -> Result<(), ProtocolParseError> {
+        let label = "Label";
+        assert_eq!(from_be_bytes!(u16, label, [0xA1, 0xB3][..]), 0xA1B3);
+
+        Ok(())
+    }
+
+    #[test]
+    pub fn test_conversion_failed_ident() -> Result<(), ProtocolParseError> {
         fn perform_test() -> Result<(), ProtocolParseError> {
             let label = "Label";
             let value = vec![0xA1];
             let value_ref = &value[..];
             from_be_bytes!(u16, label, value_ref);
+            Ok(())
+        }
+        if let Err(ProtocolParseError::ConversionError(error_label, error_file, error_line)) = perform_test() {
+            assert_eq!(error_label, "Label");
+            assert_eq!(error_line, line!() - 5);
+            assert_eq!(error_file, "rusty-router-proto-common/src/lib.rs");
+        } else {
+            panic!("Expected failure");
+        }
+
+        Ok(())
+    }
+
+    #[test]
+    pub fn test_conversion_failed_literal() -> Result<(), ProtocolParseError> {
+        fn perform_test() -> Result<(), ProtocolParseError> {
+            let label = "Label";
+            from_be_bytes!(u16, label, [0xA1][..]);
             Ok(())
         }
         if let Err(ProtocolParseError::ConversionError(error_label, error_file, error_line)) = perform_test() {
