@@ -83,6 +83,7 @@ impl Poller {
     }
 
     fn poller_task(epoll_fd: RawFd, poller_running: Arc<AtomicBool>, controller_running: Arc<AtomicBool>, handlers: Arc<RwLock<HashMap<u64, Arc<PollerItem>>>>) {
+        // The buffer size was set to 100 after testing on machines that have between 3 and 16 cores with ~1000 sockets.
         let mut buffer = [EpollEvent::empty(); 100];
 
         while poller_running.load(Ordering::SeqCst) && controller_running.load(Ordering::SeqCst) {
@@ -97,7 +98,8 @@ impl Poller {
     fn poller_process_messages(epoll_fd: RawFd, buffer: &mut [EpollEvent; 100], handlers: &Arc<RwLock<HashMap<u64, Arc<PollerItem>>>>) -> Result<(), Box<dyn std::error::Error>> {
         let size = epoll_wait(epoll_fd, buffer, 100)?;
         if size != 0 {
-            // TODO: Should not need to clone this.
+            // Cloning this to allow epoll to continue.  Edge triggering will prevent a socket from being read across multiple threads.
+            // The handler may choose to implement it's own synchronization strategy.
             let buffer = buffer.clone();
             let handlers = handlers.clone();
             tokio::task::spawn(async move {
@@ -179,7 +181,7 @@ mod test {
         }
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "multi_thread")]
     async fn test_poll() -> Result<(), Box<dyn std::error::Error>> {
         let count = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
 
