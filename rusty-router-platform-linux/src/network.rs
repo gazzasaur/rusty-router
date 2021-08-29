@@ -10,17 +10,17 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use nix::sys::epoll::{EpollCreateFlags, EpollEvent, EpollFlags, EpollOp, epoll_create1, epoll_ctl, epoll_wait};
 
 #[async_trait]
-pub trait SocketHandler {
+pub trait NetworkEventHandler {
     async fn on_recv(&self, data: Vec<u8>);
     async fn on_error(&self, message: String);
 }
 
 pub struct PollerItem {
     fd: RawFd,
-    socket_handler: Arc<Box<dyn SocketHandler + Send + Sync>>,
+    socket_handler: Arc<Box<dyn NetworkEventHandler + Send + Sync>>,
 }
 impl PollerItem {
-    pub fn new(fd: RawFd, socket_handler: Box<dyn SocketHandler + Send + Sync>) -> PollerItem {
+    pub fn new(fd: RawFd, socket_handler: Box<dyn NetworkEventHandler + Send + Sync>) -> PollerItem {
         PollerItem { fd, socket_handler: Arc::new(socket_handler) }
     }
 
@@ -115,7 +115,7 @@ impl Poller {
     }
 
     /* Once called, the fd belongs to this class and will be closed by it */
-    pub async fn add_item(&self, fd: RawFd, socket_handler: Box<dyn SocketHandler + Send + Sync>) -> Result<Arc<PollerItem>, Box<dyn std::error::Error>> {
+    pub async fn add_item(&self, fd: RawFd, socket_handler: Box<dyn NetworkEventHandler + Send + Sync>) -> Result<Arc<PollerItem>, Box<dyn std::error::Error>> {
         let epoll_fd = self.epoll_fd;
         let handlers = self.handlers.clone();
 
@@ -148,7 +148,7 @@ mod test {
     use nix::sys::socket;
     use rand::Rng;
 
-    use super::SocketHandler;
+    use super::NetworkEventHandler;
 
     struct EchoCallback {
         fd: super::RawFd,
@@ -163,7 +163,7 @@ mod test {
         }
     }
     #[async_trait]
-    impl SocketHandler for EchoCallback {
+    impl NetworkEventHandler for EchoCallback {
         async fn on_recv(&self, _data: Vec<u8>) {
             if self.count.load(std::sync::atomic::Ordering::SeqCst) > 100000000 {
                 return;
