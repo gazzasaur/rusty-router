@@ -73,7 +73,7 @@ impl DefaultNetlinkSocket {
         // Allocating 32k of memory each call.  This could be passed at the cost of locking.
         let mut receive_buffer = vec![0; (2 as usize).pow(16)];
         
-        // It is possible that we filled the buffer but there is nore to read.
+        // It is possible that we filled the buffer but there is more to read.
         loop {
             let mut offset = 0;
             let size = match tokio::time::timeout(std::time::Duration::from_millis(1000), socket.recv(&mut receive_buffer[..])).await? {

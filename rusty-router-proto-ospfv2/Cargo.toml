@@ -4,4 +4,5 @@ version = "0.1.0"
 edition = "2018"
 
 [dependencies]
-thiserror = "1.0"
+rusty-router-proto-ip = { path = "../rusty-router-proto-ip" }
+rusty-router-proto-common = { path = "../rusty-router-proto-common" }

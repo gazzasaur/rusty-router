@@ -7,4 +7,5 @@ members = [
 
     "rusty-router-proto-common",
     "rusty-router-proto-ospfv2",
+    "rusty-router-proto-ip",
 ]
