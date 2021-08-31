@@ -1,11 +1,12 @@
 use env_logger;
+use std::error::Error;
 use std::sync::Arc;
 use std::collections::HashMap;
 
 use rusty_router_model::RustyRouter;
 
 #[tokio::main]
-async fn main() {
+async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
     env_logger::init();
 
     let config = rusty_router_model::Router::new(
@@ -37,9 +38,9 @@ async fn main() {
 
     let socket = match rusty_router_platform_linux::netlink::DefaultNetlinkSocket::new() {
         Ok(socket) => socket,
-        Err(_) => return (),
+        Err(_) => return Ok(()),
     };
-    let nl = rusty_router_platform_linux::NetlinkRustyRouter::new(config, Arc::new(socket));
+    let nl = rusty_router_platform_linux::LinuxRustyRouter::new(config, Arc::new(socket))?;
 
     if let Ok(mut interfaces) = nl.list_network_interfaces().await {
         interfaces.sort_by(|a, b| {
@@ -112,8 +113,9 @@ async fn main() {
             }
         });
         println!();
-    }
+    };
 
+    Ok(())
     // rusty_router_platform_linux::socket::DefaultNetlinkSocket::new().unwrap().receive_messages(|_a| {
     //     println!("{:?}", _a);
     // }).await.unwrap();

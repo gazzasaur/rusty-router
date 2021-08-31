@@ -59,7 +59,7 @@ pub struct Poller {
     handlers: Arc<RwLock<HashMap<u64, Arc<PollerItem>>>>,
 }
 impl Poller {
-    pub fn new() -> Result<Poller, Box<dyn std::error::Error>> {
+    pub fn new() -> Result<Poller, Box<dyn std::error::Error + Send + Sync>> {
         let poller_running = Arc::new(AtomicBool::new(true));
         let controller_running = Arc::new(AtomicBool::new(true));
         
@@ -143,26 +143,17 @@ impl Drop for Poller {
 
 #[cfg(test)]
 mod test {
-    use std::sync::atomic::Ordering;
-
-    use async_trait::async_trait;
-    use log::error;
-    use nix::sys::socket;
+    use super::*;
+    
     use rand::Rng;
-
-    use super::NetworkEventHandler;
+    use nix::sys::socket;
 
     struct EchoCallback {
         fd: super::RawFd,
         count: std::sync::Arc<std::sync::atomic::AtomicUsize>,
     }
     impl EchoCallback {
-        pub fn new(fd: super::RawFd, count: std::sync::Arc<std::sync::atomic::AtomicUsize>) -> EchoCallback {
-            EchoCallback {
-                fd,
-                count
-            }
-        }
+        pub fn new(fd: super::RawFd, count: std::sync::Arc<std::sync::atomic::AtomicUsize>) -> EchoCallback { EchoCallback { fd, count } }
     }
     #[async_trait]
     impl NetworkEventHandler for EchoCallback {
@@ -170,8 +161,8 @@ mod test {
             if self.count.load(std::sync::atomic::Ordering::SeqCst) > 100000000 {
                 return;
             }
-            self.count.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
             let mut rng = rand::thread_rng();
+            self.count.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
             let data: String = std::iter::repeat(()).map(|()| rng.sample(rand::distributions::Alphanumeric)).map(char::from).take(128).collect();
             nix::sys::socket::send(self.fd, data.as_bytes(), super::MsgFlags::empty()).expect("Failed to send data.");
         }
@@ -181,8 +172,8 @@ mod test {
         }
     }
 
-    #[tokio::test(flavor = "multi_thread")]
-    async fn test_poll() -> Result<(), Box<dyn std::error::Error>> {
+    #[tokio::test]
+    async fn test_poll() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let count = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
 
         let subject = std::sync::Arc::new(tokio::sync::Mutex::new(super::Poller::new()?));
