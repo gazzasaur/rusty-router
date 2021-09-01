@@ -1,13 +1,36 @@
 use env_logger;
+use log::{error, warn};
 use std::error::Error;
 use std::sync::Arc;
 use std::collections::HashMap;
 
 use rusty_router_model::RustyRouter;
 
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
     env_logger::init();
+    
+    // Check the effective set for required capabilitites.
+    // Do not attempt to raise these as it must be done per thread, which we are not going to do in the tokio runtime.
+    // TODO Manage Tokio runtimes so capabilities may be reliably raised or dropped.
+    let required_capabilities: Vec<caps::Capability> = vec![caps::Capability::CAP_NET_RAW, caps::Capability::CAP_NET_ADMIN];
+
+    let permitted_capabilities = caps::read(None, caps::CapSet::Effective)?;
+    for capability in &required_capabilities {
+        if !permitted_capabilities.contains(&capability) {
+            error!("Required capability must be raised in effective set at launch: {:?}", capability);
+            return Ok(());
+        }
+    }
+
+    // As we cannot reliably drop anything on all threads, we will warn if we find capabilities we do not need.
+    let permitted_capabilities = caps::read(None, caps::CapSet::Permitted)?;
+    for capability in permitted_capabilities {
+        if !&required_capabilities.contains(&capability) {
+            warn!("Detected a capability that is not required: {:?}", capability);
+        }
+    }
 
     let config = rusty_router_model::Router::new(
         vec![("iface0".to_string(), rusty_router_model::NetworkInterface::new(
