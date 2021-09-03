@@ -67,11 +67,12 @@ impl Poller {
             controller_running: controller_running.clone(),
             handlers,
         };
-        std::thread::spawn(move || {
+
+        tokio::task::spawn_blocking(move || {
             let epoll_fd = epoll_fd;
             let poller_running = poller_running;
             let controller_running = controller_running;
-            Poller::poller_task(epoll_fd, poller_running, controller_running, task_handlers)
+            Poller::poller_task(epoll_fd, poller_running, controller_running, task_handlers);
         });
         Ok(poller)
     }

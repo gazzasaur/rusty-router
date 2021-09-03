@@ -122,8 +122,8 @@ mod tests {
         panic!("No test data found");
     }
 
-    #[test]
-    fn test_list_network_interfaces_empty() -> Result<(), Box<dyn Error + Send + Sync>> {
+    #[tokio::test]
+    async fn test_list_network_interfaces_empty() -> Result<(), Box<dyn Error + Send + Sync>> {
         let config = rusty_router_model::Router::new(HashMap::new(), HashMap::new(), HashMap::new());
 
         let mock_netlink_socket: Arc<dyn netlink::NetlinkSocket + Send + Sync> = Arc::new(netlink::MockNetlinkSocket::new());
@@ -132,24 +132,24 @@ mod tests {
         }
 
         let subject = LinuxRustyRouter::new(config, mock_netlink_socket.clone())?;
-        match tokio_test::block_on(subject.list_network_interfaces()) {
+        match subject.list_network_interfaces().await {
             Ok(actual) => assert_eq!(actual, vec![]),
             Err(_) => panic!("Test Failed"),
         };
         Ok(())
     }
     
-    #[test]
-    fn test_list_network_interfaces_unassigned_up() -> Result<(), Box<dyn Error + Send + Sync>> {
-        perform_list_network_interfaces_unassigned(rusty_router_model::NetworkInterfaceOperationalState::Up)
+    #[tokio::test]
+    async fn test_list_network_interfaces_unassigned_up() -> Result<(), Box<dyn Error + Send + Sync>> {
+        perform_list_network_interfaces_unassigned(rusty_router_model::NetworkInterfaceOperationalState::Up).await
     }
 
-    #[test]
-    fn test_list_network_interfaces_unassigned_down() -> Result<(), Box<dyn Error + Send + Sync>> {
-        perform_list_network_interfaces_unassigned(rusty_router_model::NetworkInterfaceOperationalState::Down)
+    #[tokio::test]
+    async fn test_list_network_interfaces_unassigned_down() -> Result<(), Box<dyn Error + Send + Sync>> {
+        perform_list_network_interfaces_unassigned(rusty_router_model::NetworkInterfaceOperationalState::Down).await
     }
 
-    fn perform_list_network_interfaces_unassigned(state: rusty_router_model::NetworkInterfaceOperationalState) -> Result<(), Box<dyn Error + Send + Sync>> {
+    async fn perform_list_network_interfaces_unassigned(state: rusty_router_model::NetworkInterfaceOperationalState) -> Result<(), Box<dyn Error + Send + Sync>> {
         let config = rusty_router_model::Router::new(HashMap::new(), HashMap::new(), HashMap::new());
 
         let mock_netlink_socket: Arc<dyn netlink::NetlinkSocket + Send + Sync> = Arc::new(netlink::MockNetlinkSocket::new());
@@ -161,15 +161,15 @@ mod tests {
         }
 
         let subject = LinuxRustyRouter::new(config, mock_netlink_socket.clone())?;
-        match tokio_test::block_on(subject.list_network_interfaces()) {
+        match subject.list_network_interfaces().await {
             Ok(actual) => assert_eq!(actual, vec![rusty_router_model::NetworkInterfaceStatus::new("test_iface".to_string(), None, state.clone() )]),
             Err(_) => panic!("Test Failed"),
         };
         Ok(())
     }
 
-    #[test]
-    fn test_list_network_interfaces_missing() -> Result<(), Box<dyn Error + Send + Sync>> {
+    #[tokio::test]
+    async fn test_list_network_interfaces_missing() -> Result<(), Box<dyn Error + Send + Sync>> {
         let config = rusty_router_model::Router::new(vec![
             ("iface0".to_string(), rusty_router_model::NetworkInterface::new("eth0".to_string(), rusty_router_model::NetworkInterfaceType::GenericInterface))
         ].into_iter().collect(), HashMap::new(), HashMap::new());
@@ -180,15 +180,15 @@ mod tests {
         }
 
         let subject = LinuxRustyRouter::new(config, mock_netlink_socket.clone())?;
-        match tokio_test::block_on(subject.list_network_interfaces()) {
+        match subject.list_network_interfaces().await {
             Ok(actual) => assert_eq!(actual, vec![rusty_router_model::NetworkInterfaceStatus::new("eth0".to_string(), Some("iface0".to_string()), rusty_router_model::NetworkInterfaceOperationalState::NotFound)]),
             Err(_) => panic!("Test Failed"),
         };
         Ok(())
     }
 
-    #[test]
-    fn test_list_network_interfaces_existing() -> Result<(), Box<dyn Error + Send + Sync>> {
+    #[tokio::test]
+    async fn test_list_network_interfaces_existing() -> Result<(), Box<dyn Error + Send + Sync>> {
         let config = rusty_router_model::Router::new(vec![
             ("iface0".to_string(), rusty_router_model::NetworkInterface::new("eth0".to_string(), rusty_router_model::NetworkInterfaceType::GenericInterface))
         ].into_iter().collect(), HashMap::new(), HashMap::new());
@@ -202,15 +202,15 @@ mod tests {
         }
 
         let subject = LinuxRustyRouter::new(config, mock_netlink_socket.clone())?;
-        match tokio_test::block_on(subject.list_network_interfaces()) {
+        match subject.list_network_interfaces().await {
             Ok(actual) => assert_eq!(actual, vec![rusty_router_model::NetworkInterfaceStatus::new("eth0".to_string(), Some("iface0".to_string()), rusty_router_model::NetworkInterfaceOperationalState::Up)]),
             Err(_) => panic!("Test Failed"),
         };
         Ok(())
     }
 
-    #[test]
-    fn test_list_router_interfaces_empty() -> Result<(), Box<dyn Error + Send + Sync>> {
+    #[tokio::test]
+    async fn test_list_router_interfaces_empty() -> Result<(), Box<dyn Error + Send + Sync>> {
         let config = rusty_router_model::Router::new(HashMap::new(), HashMap::new(), HashMap::new());
 
         let mock_netlink_socket: Arc<dyn netlink::NetlinkSocket + Send + Sync> = Arc::new(netlink::MockNetlinkSocket::new());
@@ -222,15 +222,15 @@ mod tests {
         }
 
         let subject = LinuxRustyRouter::new(config, mock_netlink_socket.clone())?;
-        match tokio_test::block_on(subject.list_router_interfaces()) {
+        match subject.list_router_interfaces().await {
             Ok(actual) => assert_eq!(actual, vec![]),
             Err(_) => panic!("Test Failed"),
         };
         Ok(())
     }
 
-    #[test]
-    fn test_list_router_interfaces_mapped() -> Result<(), Box<dyn Error + Send + Sync>> {
+    #[tokio::test]
+    async fn test_list_router_interfaces_mapped() -> Result<(), Box<dyn Error + Send + Sync>> {
         let config = rusty_router_model::Router::new(HashMap::new(), HashMap::new(), HashMap::new());
 
         let mock_netlink_socket: Arc<dyn netlink::NetlinkSocket + Send + Sync> = Arc::new(netlink::MockNetlinkSocket::new());
@@ -248,7 +248,7 @@ mod tests {
         }
 
         let subject = LinuxRustyRouter::new(config, mock_netlink_socket.clone())?;
-        match tokio_test::block_on(subject.list_router_interfaces()) {
+        match subject.list_router_interfaces().await {
             Ok(actual) => assert_eq!(actual, vec![rusty_router_model::RouterInterfaceStatus::new(
                 None, vec![rusty_router_model::IpAddress::new(
                     rusty_router_model::IpAddressType::IpV4, "127.0.0.1".to_string(), 32
@@ -261,8 +261,8 @@ mod tests {
         Ok(())
     }
 
-    #[test]
-    fn test_list_router_interfaces_unmapped() -> Result<(), Box<dyn Error + Send + Sync>> {
+    #[tokio::test]
+    async fn test_list_router_interfaces_unmapped() -> Result<(), Box<dyn Error + Send + Sync>> {
         let config = rusty_router_model::Router::new(vec![
             ("iface0".to_string(), rusty_router_model::NetworkInterface::new("eth0".to_string(), rusty_router_model::NetworkInterfaceType::GenericInterface)),
         ].into_iter().collect(), vec![
@@ -279,7 +279,7 @@ mod tests {
         }
 
         let subject = LinuxRustyRouter::new(config, mock_netlink_socket.clone())?;
-        match tokio_test::block_on(subject.list_router_interfaces()) {
+        match subject.list_router_interfaces().await {
             Ok(actual) => assert_eq!(actual, vec![rusty_router_model::RouterInterfaceStatus::new(
                 Some("Link1".to_string()), vec![], rusty_router_model::NetworkInterfaceStatus::new(
                     "eth0".to_string(), Some("iface0".to_string()), rusty_router_model::NetworkInterfaceOperationalState::NotFound
