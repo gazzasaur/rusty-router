@@ -2,18 +2,12 @@ use log::{warn, error};
 use std::sync::Arc;
 use nix::unistd::close;
 use tokio::sync::RwLock;
-use async_trait::async_trait;
 use std::os::unix::io::RawFd;
 use std::collections::HashMap;
 use nix::sys::socket::MsgFlags;
+use rusty_router_model::NetworkEventHandler;
 use std::sync::atomic::{AtomicBool, Ordering};
 use nix::sys::epoll::{EpollCreateFlags, EpollEvent, EpollFlags, EpollOp, epoll_create1, epoll_ctl, epoll_wait};
-
-#[async_trait]
-pub trait NetworkEventHandler {
-    async fn on_recv(&self, data: Vec<u8>);
-    async fn on_error(&self, message: String);
-}
 
 pub struct PollerItem {
     fd: RawFd,
@@ -73,7 +67,7 @@ impl Poller {
             controller_running: controller_running.clone(),
             handlers,
         };
-        tokio::task::spawn_blocking(move || {
+        std::thread::spawn(move || {
             let epoll_fd = epoll_fd;
             let poller_running = poller_running;
             let controller_running = controller_running;
@@ -147,6 +141,7 @@ mod test {
     
     use rand::Rng;
     use nix::sys::socket;
+    use async_trait::async_trait;
 
     struct EchoCallback {
         fd: super::RawFd,
