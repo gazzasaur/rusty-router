@@ -1,13 +1,35 @@
 use log::{warn, error};
-use std::sync::Arc;
-use nix::unistd::close;
+use std::{error::Error, ffi::OsString, net::Ipv4Addr, sync::Arc};
+use nix::{errno::Errno, sys::socket::IpMembershipRequest, unistd::close};
 use tokio::sync::RwLock;
+use async_trait::async_trait;
 use std::os::unix::io::RawFd;
 use std::collections::HashMap;
 use nix::sys::socket::MsgFlags;
-use rusty_router_model::NetworkEventHandler;
+use rusty_router_model::{NetworkConnection, NetworkEventHandler};
 use std::sync::atomic::{AtomicBool, Ordering};
 use nix::sys::epoll::{EpollCreateFlags, EpollEvent, EpollFlags, EpollOp, epoll_create1, epoll_ctl, epoll_wait};
+
+pub struct Ipv4NetworkConnection {
+    poller_item: Arc<PollerItem>,
+}
+impl Ipv4NetworkConnection {
+    pub async fn new(network_device: String, protocol: i32, multicast_groups: Vec<Ipv4Addr>, handler: Box<dyn NetworkEventHandler + Send + Sync>, poller: &Poller) -> Result<Ipv4NetworkConnection, Box<dyn Error + Send + Sync>> {
+        let sock = Errno::result(unsafe { libc::socket(libc::AF_INET, libc::O_NONBLOCK | libc::SOCK_RAW, protocol) })?;
+        let poller_item = poller.add_item(sock, handler).await?;
+        for multicast_group in multicast_groups {
+            nix::sys::socket::setsockopt(sock, nix::sys::socket::sockopt::IpAddMembership, &IpMembershipRequest::new(nix::sys::socket::Ipv4Addr::from_std(&multicast_group), None)).unwrap();
+        }
+        nix::sys::socket::setsockopt(sock, nix::sys::socket::sockopt::BindToDevice, &OsString::from(network_device))?;
+        Ok(Ipv4NetworkConnection { poller_item })
+    }
+}
+#[async_trait]
+impl NetworkConnection for Ipv4NetworkConnection {
+    async fn send(&self, data: Vec<u8>) -> Result<usize, Box<dyn std::error::Error + Send + Sync>> {
+        self.poller_item.send(&data)
+    }
+}
 
 pub struct PollerItem {
     fd: RawFd,
@@ -18,7 +40,7 @@ impl PollerItem {
         PollerItem { fd, socket_handler: Arc::new(socket_handler) }
     }
 
-    pub fn send(&self, buffer: &Vec<u8>) -> Result<usize, Box<dyn std::error::Error>> {
+    pub fn send(&self, buffer: &Vec<u8>) -> Result<usize, Box<dyn std::error::Error + Send + Sync>> {
         let fd = self.fd;
         return Ok(nix::sys::socket::send(fd, &buffer[..], MsgFlags::empty())?);
     }
@@ -112,7 +134,7 @@ impl Poller {
     }
 
     /* Once called, the fd belongs to this class and will be closed by it */
-    pub async fn add_item(&self, fd: RawFd, socket_handler: Box<dyn NetworkEventHandler + Send + Sync>) -> Result<Arc<PollerItem>, Box<dyn std::error::Error>> {
+    pub async fn add_item(&self, fd: RawFd, socket_handler: Box<dyn NetworkEventHandler + Send + Sync>) -> Result<Arc<PollerItem>, Box<dyn std::error::Error + Send + Sync>> {
         let epoll_fd = self.epoll_fd;
         let handlers = self.handlers.clone();
 

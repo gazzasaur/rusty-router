@@ -1,11 +1,13 @@
+use std::net::Ipv4Addr;
 use std::sync::Arc;
 use std::error::Error;
 use async_trait::async_trait;
+use network::Ipv4NetworkConnection;
 use std::collections::HashMap;
 
 use log::warn;
 
-use rusty_router_model;
+use rusty_router_model::{self, NetworkConnection, NetworkEventHandler};
 use rusty_router_model::RustyRouter;
 
 pub mod link;
@@ -14,16 +16,16 @@ pub mod network;
 pub mod netlink;
 
 pub struct LinuxRustyRouter {
-    _network_poller: network::Poller,
+    network_poller: network::Poller,
     config: Arc<rusty_router_model::Router>,
     netlink_socket: Arc<dyn netlink::NetlinkSocket + Send + Sync>,
 }
 impl LinuxRustyRouter {
     pub fn new(config: rusty_router_model::Router, netlink_socket: Arc<dyn netlink::NetlinkSocket + Send + Sync>) -> Result<LinuxRustyRouter, Box<dyn Error + Send + Sync>> {
         Ok(LinuxRustyRouter {
+            netlink_socket,
             config: Arc::new(config),
-            netlink_socket: netlink_socket,
-            _network_poller: network::Poller::new()?,
+            network_poller: network::Poller::new()?,
         })
     }
 
@@ -94,6 +96,10 @@ impl RustyRouter for LinuxRustyRouter {
             ));
         });
         return Ok(addresses);
+    }
+
+    async fn connect_ipv4(&self, network_device: String, protocol: i32, multicast_groups: Vec<Ipv4Addr>, handler: Box<dyn NetworkEventHandler + Send + Sync>) -> Result<Box<dyn NetworkConnection + Send + Sync>, Box<dyn Error + Send + Sync>> {
+        Ok(Box::new(Ipv4NetworkConnection::new(network_device, protocol, multicast_groups, handler, &self.network_poller).await?))
     }
 }
 
