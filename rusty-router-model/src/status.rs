@@ -2,14 +2,14 @@ use std::fmt::{Display, Formatter};
 use serde::{Serialize, Deserialize};
 
 #[derive(Serialize, Deserialize, Debug, PartialEq, Eq)]
-pub struct NetworkInterfaceStatus {
+pub struct NetworkLinkStatus {
     device: String,
     name: Option<String>,
-    operational_state: NetworkInterfaceOperationalState,
+    operational_state: NetworkLinkOperationalState,
 }
-impl NetworkInterfaceStatus {
-    pub fn new(device: String, name: Option<String>, operational_state: NetworkInterfaceOperationalState) -> NetworkInterfaceStatus {
-        NetworkInterfaceStatus {
+impl NetworkLinkStatus {
+    pub fn new(device: String, name: Option<String>, operational_state: NetworkLinkOperationalState) -> NetworkLinkStatus {
+        NetworkLinkStatus {
             name, device, operational_state,
         }
     }
@@ -22,21 +22,21 @@ impl NetworkInterfaceStatus {
         &self.name
     }
 
-    pub fn get_operational_state(&self) -> &NetworkInterfaceOperationalState {
+    pub fn get_operational_state(&self) -> &NetworkLinkOperationalState {
         &self.operational_state
     }
 }
 
 #[derive(Serialize, Deserialize, Debug, PartialEq, Eq)]
-pub struct RouterInterfaceStatus {
+pub struct NetworkInterfaceStatus {
     name: Option<String>,
     addresses: Vec<crate::config::IpAddress>,
-    network_interface_status: NetworkInterfaceStatus,
+    network_link_status: NetworkLinkStatus,
 }
-impl RouterInterfaceStatus {
-    pub fn new(name: Option<String>, addresses: Vec<crate::config::IpAddress>, network_interface_status: NetworkInterfaceStatus) -> RouterInterfaceStatus {
-        RouterInterfaceStatus {
-            name, addresses, network_interface_status,
+impl NetworkInterfaceStatus {
+    pub fn new(name: Option<String>, addresses: Vec<crate::config::IpAddress>, network_link_status: NetworkLinkStatus) -> NetworkInterfaceStatus {
+        NetworkInterfaceStatus {
+            name, addresses, network_link_status,
         }
     }
 
@@ -44,8 +44,8 @@ impl RouterInterfaceStatus {
         &self.name
     }
 
-    pub fn get_network_interface_status(&self) -> &NetworkInterfaceStatus {
-        &self.network_interface_status
+    pub fn get_network_link_status(&self) -> &NetworkLinkStatus {
+        &self.network_link_status
     }
 
     pub fn get_addresses(&self) -> &Vec<crate::config::IpAddress> {
@@ -54,19 +54,19 @@ impl RouterInterfaceStatus {
 }
 
 #[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Clone)]
-pub enum NetworkInterfaceOperationalState {
+pub enum NetworkLinkOperationalState {
     Up,
     Down,
     Unknown,
     NotFound,
 }
-impl Display for NetworkInterfaceOperationalState {
+impl Display for NetworkLinkOperationalState {
     fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
         match &self {
-            NetworkInterfaceOperationalState::Up => write!(f, "Up"),
-            NetworkInterfaceOperationalState::Down => write!(f, "Down"),
-            NetworkInterfaceOperationalState::Unknown => write!(f, "Unknown"),
-            NetworkInterfaceOperationalState::NotFound => write!(f, "NotFound"),
+            NetworkLinkOperationalState::Up => write!(f, "Up"),
+            NetworkLinkOperationalState::Down => write!(f, "Down"),
+            NetworkLinkOperationalState::Unknown => write!(f, "Unknown"),
+            NetworkLinkOperationalState::NotFound => write!(f, "NotFound"),
         }
     }
 }

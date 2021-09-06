@@ -39,7 +39,7 @@ impl LinuxRustyRouter {
         #[cfg(not(test))] return route::NetlinkRustyRouterAddress::list_router_interfaces(&self.netlink_socket).await;
     }
 
-    async fn perform_list_mapped_router_interfaces(&self, network_router_interfaces: &mut HashMap<&String, &String>, addresses: &mut Vec<rusty_router_model::RouterInterfaceStatus>) -> Result<(), Box<dyn Error>> {
+    async fn perform_list_mapped_router_interfaces(&self, network_router_interfaces: &mut HashMap<&String, &String>, addresses: &mut Vec<rusty_router_model::NetworkInterfaceStatus>) -> Result<(), Box<dyn Error>> {
         let mut device_id_links = self.perform_list_network_interfaces().await?;
         let mut device_id_addresses = self.perform_list_router_interfaces().await?;
         let mut device_network_interfaces: HashMap<&String, &String> = self.config.get_network_interfaces().iter().map(|(name, interface)| (interface.get_device(), name)).collect();
@@ -49,8 +49,8 @@ impl LinuxRustyRouter {
                 Some(device) => {
                     let net_name = device_network_interfaces.remove(&device.get_name().clone());
                     let addr_name: Option<String> = net_name.and_then(|net_name| network_router_interfaces.remove(net_name).and_then(|addr_name| Some(addr_name.clone())));
-                    addresses.push(rusty_router_model::RouterInterfaceStatus::new(
-                        addr_name, address_status.take_addresses(), rusty_router_model::NetworkInterfaceStatus::new(
+                    addresses.push(rusty_router_model::NetworkInterfaceStatus::new(
+                        addr_name, address_status.take_addresses(), rusty_router_model::NetworkLinkStatus::new(
                             device.get_name().clone(), net_name.map(|value| value.clone()), device.get_state().clone()
                         )
                     ))
@@ -63,35 +63,35 @@ impl LinuxRustyRouter {
 }
 #[async_trait]
 impl RustyRouter for LinuxRustyRouter {
-    async fn list_network_interfaces(&self) -> Result<Vec<rusty_router_model::NetworkInterfaceStatus>, Box<dyn Error>> {
+    async fn list_network_links(&self) -> Result<Vec<rusty_router_model::NetworkLinkStatus>, Box<dyn Error>> {
         let config = self.config.clone();
         let mut device_id_links = self.perform_list_network_interfaces().await?;
         let mut device_name_links: HashMap<String, link::NetlinkRustyRouterLinkStatus> = device_id_links.drain().map(|(_, link)| (link.get_name().clone(), link)).collect();
         let mut device_config: HashMap<&String, String> = config.get_network_interfaces().iter().map(|(name, config)| (config.get_device(), name.clone())).collect();
 
         let mut links = vec![];
-        device_name_links.drain().for_each(|(_, link)| links.push(rusty_router_model::NetworkInterfaceStatus::new(
+        device_name_links.drain().for_each(|(_, link)| links.push(rusty_router_model::NetworkLinkStatus::new(
             link.get_name().clone(), device_config.remove(&link.get_name().clone()), link.get_state().clone(),
         )));
-        device_config.drain().for_each(|(device, interface)| links.push(rusty_router_model::NetworkInterfaceStatus::new(
-            device.clone(), Some(interface), rusty_router_model::NetworkInterfaceOperationalState::NotFound,
+        device_config.drain().for_each(|(device, interface)| links.push(rusty_router_model::NetworkLinkStatus::new(
+            device.clone(), Some(interface), rusty_router_model::NetworkLinkOperationalState::NotFound,
         )));
         Ok(links)
     }
 
-    async fn list_router_interfaces(&self) -> Result<Vec<rusty_router_model::RouterInterfaceStatus>, Box<dyn Error>> {
+    async fn list_network_interfaces(&self) -> Result<Vec<rusty_router_model::NetworkInterfaceStatus>, Box<dyn Error>> {
         let mut addresses = vec![];
         let mut network_router_interfaces: HashMap<&String, &String> = self.config.get_router_interfaces().iter().map(|(name, interface)| (interface.get_network_interface(), name)).collect();
 
         self.perform_list_mapped_router_interfaces(&mut network_router_interfaces, &mut addresses).await?;
         network_router_interfaces.drain().for_each(|(net_name, addr_name)| {
             let network_interface = match self.config.get_network_interfaces().get(net_name) {
-                Some(network_interface) => rusty_router_model::NetworkInterfaceStatus::new(
-                    network_interface.get_device().clone(), Some(net_name.clone()), rusty_router_model::NetworkInterfaceOperationalState::NotFound
+                Some(network_interface) => rusty_router_model::NetworkLinkStatus::new(
+                    network_interface.get_device().clone(), Some(net_name.clone()), rusty_router_model::NetworkLinkOperationalState::NotFound
                 ),
                 None => return
             };
-            addresses.push(rusty_router_model::RouterInterfaceStatus::new(
+            addresses.push(rusty_router_model::NetworkInterfaceStatus::new(
                 Some(addr_name.clone()), vec![], network_interface
             ));
         });
@@ -138,7 +138,7 @@ mod tests {
         }
 
         let subject = LinuxRustyRouter::new(config, mock_netlink_socket.clone())?;
-        match subject.list_network_interfaces().await {
+        match subject.list_network_links().await {
             Ok(actual) => assert_eq!(actual, vec![]),
             Err(_) => panic!("Test Failed"),
         };
@@ -147,15 +147,15 @@ mod tests {
     
     #[tokio::test]
     async fn test_list_network_interfaces_unassigned_up() -> Result<(), Box<dyn Error + Send + Sync>> {
-        perform_list_network_interfaces_unassigned(rusty_router_model::NetworkInterfaceOperationalState::Up).await
+        perform_list_network_interfaces_unassigned(rusty_router_model::NetworkLinkOperationalState::Up).await
     }
 
     #[tokio::test]
     async fn test_list_network_interfaces_unassigned_down() -> Result<(), Box<dyn Error + Send + Sync>> {
-        perform_list_network_interfaces_unassigned(rusty_router_model::NetworkInterfaceOperationalState::Down).await
+        perform_list_network_interfaces_unassigned(rusty_router_model::NetworkLinkOperationalState::Down).await
     }
 
-    async fn perform_list_network_interfaces_unassigned(state: rusty_router_model::NetworkInterfaceOperationalState) -> Result<(), Box<dyn Error + Send + Sync>> {
+    async fn perform_list_network_interfaces_unassigned(state: rusty_router_model::NetworkLinkOperationalState) -> Result<(), Box<dyn Error + Send + Sync>> {
         let config = rusty_router_model::Router::new(HashMap::new(), HashMap::new(), HashMap::new());
 
         let mock_netlink_socket: Arc<dyn netlink::NetlinkSocket + Send + Sync> = Arc::new(netlink::MockNetlinkSocket::new());
@@ -167,8 +167,8 @@ mod tests {
         }
 
         let subject = LinuxRustyRouter::new(config, mock_netlink_socket.clone())?;
-        match subject.list_network_interfaces().await {
-            Ok(actual) => assert_eq!(actual, vec![rusty_router_model::NetworkInterfaceStatus::new("test_iface".to_string(), None, state.clone() )]),
+        match subject.list_network_links().await {
+            Ok(actual) => assert_eq!(actual, vec![rusty_router_model::NetworkLinkStatus::new("test_iface".to_string(), None, state.clone() )]),
             Err(_) => panic!("Test Failed"),
         };
         Ok(())
@@ -186,8 +186,8 @@ mod tests {
         }
 
         let subject = LinuxRustyRouter::new(config, mock_netlink_socket.clone())?;
-        match subject.list_network_interfaces().await {
-            Ok(actual) => assert_eq!(actual, vec![rusty_router_model::NetworkInterfaceStatus::new("eth0".to_string(), Some("iface0".to_string()), rusty_router_model::NetworkInterfaceOperationalState::NotFound)]),
+        match subject.list_network_links().await {
+            Ok(actual) => assert_eq!(actual, vec![rusty_router_model::NetworkLinkStatus::new("eth0".to_string(), Some("iface0".to_string()), rusty_router_model::NetworkLinkOperationalState::NotFound)]),
             Err(_) => panic!("Test Failed"),
         };
         Ok(())
@@ -203,13 +203,13 @@ mod tests {
         if let Ok(mut test_data) = LINK_TEST_DATA.lock() {
             test_data.insert(Arc::as_ptr(&mock_netlink_socket) as * const () as usize, vec![(
                 100 as u64,
-                link::NetlinkRustyRouterLinkStatus::new(100, "eth0".to_string(), rusty_router_model::NetworkInterfaceOperationalState::Up)
+                link::NetlinkRustyRouterLinkStatus::new(100, "eth0".to_string(), rusty_router_model::NetworkLinkOperationalState::Up)
             )].into_iter().collect());
         }
 
         let subject = LinuxRustyRouter::new(config, mock_netlink_socket.clone())?;
-        match subject.list_network_interfaces().await {
-            Ok(actual) => assert_eq!(actual, vec![rusty_router_model::NetworkInterfaceStatus::new("eth0".to_string(), Some("iface0".to_string()), rusty_router_model::NetworkInterfaceOperationalState::Up)]),
+        match subject.list_network_links().await {
+            Ok(actual) => assert_eq!(actual, vec![rusty_router_model::NetworkLinkStatus::new("eth0".to_string(), Some("iface0".to_string()), rusty_router_model::NetworkLinkOperationalState::Up)]),
             Err(_) => panic!("Test Failed"),
         };
         Ok(())
@@ -228,7 +228,7 @@ mod tests {
         }
 
         let subject = LinuxRustyRouter::new(config, mock_netlink_socket.clone())?;
-        match subject.list_router_interfaces().await {
+        match subject.list_network_interfaces().await {
             Ok(actual) => assert_eq!(actual, vec![]),
             Err(_) => panic!("Test Failed"),
         };
@@ -243,7 +243,7 @@ mod tests {
         if let Ok(mut test_data) = LINK_TEST_DATA.lock() {
             test_data.insert(Arc::as_ptr(&mock_netlink_socket) as * const () as usize, vec![(
                 100 as u64,
-                link::NetlinkRustyRouterLinkStatus::new(100, "eth0".to_string(), rusty_router_model::NetworkInterfaceOperationalState::Up)
+                link::NetlinkRustyRouterLinkStatus::new(100, "eth0".to_string(), rusty_router_model::NetworkLinkOperationalState::Up)
             )].into_iter().collect());
         }
         if let Ok(mut test_data) = ROUTE_TEST_DATA.lock() {
@@ -254,12 +254,12 @@ mod tests {
         }
 
         let subject = LinuxRustyRouter::new(config, mock_netlink_socket.clone())?;
-        match subject.list_router_interfaces().await {
-            Ok(actual) => assert_eq!(actual, vec![rusty_router_model::RouterInterfaceStatus::new(
+        match subject.list_network_interfaces().await {
+            Ok(actual) => assert_eq!(actual, vec![rusty_router_model::NetworkInterfaceStatus::new(
                 None, vec![rusty_router_model::IpAddress::new(
                     rusty_router_model::IpAddressType::IpV4, "127.0.0.1".to_string(), 32
-                )], rusty_router_model::NetworkInterfaceStatus::new(
-                    "eth0".to_string(), None, rusty_router_model::NetworkInterfaceOperationalState::Up
+                )], rusty_router_model::NetworkLinkStatus::new(
+                    "eth0".to_string(), None, rusty_router_model::NetworkLinkOperationalState::Up
                 )
             )]),
             Err(_) => panic!("Test Failed"),
@@ -285,10 +285,10 @@ mod tests {
         }
 
         let subject = LinuxRustyRouter::new(config, mock_netlink_socket.clone())?;
-        match subject.list_router_interfaces().await {
-            Ok(actual) => assert_eq!(actual, vec![rusty_router_model::RouterInterfaceStatus::new(
-                Some("Link1".to_string()), vec![], rusty_router_model::NetworkInterfaceStatus::new(
-                    "eth0".to_string(), Some("iface0".to_string()), rusty_router_model::NetworkInterfaceOperationalState::NotFound
+        match subject.list_network_interfaces().await {
+            Ok(actual) => assert_eq!(actual, vec![rusty_router_model::NetworkInterfaceStatus::new(
+                Some("Link1".to_string()), vec![], rusty_router_model::NetworkLinkStatus::new(
+                    "eth0".to_string(), Some("iface0".to_string()), rusty_router_model::NetworkLinkOperationalState::NotFound
                 )
             )]),
             Err(_) => panic!("Test Failed"),

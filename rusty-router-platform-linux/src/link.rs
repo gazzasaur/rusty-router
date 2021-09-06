@@ -14,10 +14,10 @@ use crate::netlink;
 pub struct NetlinkRustyRouterLinkStatus {
     index: u64,
     name: String,
-    state: rusty_router_model::NetworkInterfaceOperationalState,
+    state: rusty_router_model::NetworkLinkOperationalState,
 }
 impl NetlinkRustyRouterLinkStatus {
-    pub fn new(index: u64, name: String, state: rusty_router_model::NetworkInterfaceOperationalState) -> NetlinkRustyRouterLinkStatus {
+    pub fn new(index: u64, name: String, state: rusty_router_model::NetworkLinkOperationalState) -> NetlinkRustyRouterLinkStatus {
         NetlinkRustyRouterLinkStatus { index, name, state }
     }
 
@@ -29,7 +29,7 @@ impl NetlinkRustyRouterLinkStatus {
         &self.name
     }
 
-    pub fn get_state(&self) -> &rusty_router_model::NetworkInterfaceOperationalState {
+    pub fn get_state(&self) -> &rusty_router_model::NetworkLinkOperationalState {
         &self.state
     }
 }
@@ -53,7 +53,7 @@ impl NetlinkRustyRouterLink {
     fn process_link_message(message: netlink_packet_core::NetlinkMessage<netlink_packet_route::RtnlMessage>) -> Option<NetlinkRustyRouterLinkStatus> {
         let mut index: Option<u64> = None;
         let mut name: Option<String> = None;
-        let mut state = rusty_router_model::NetworkInterfaceOperationalState::Unknown;
+        let mut state = rusty_router_model::NetworkLinkOperationalState::Unknown;
 
         if let netlink_packet_core::NetlinkPayload::InnerMessage(netlink_packet_route::RtnlMessage::NewLink(msg)) = message.payload {
             index = Some(msg.header.index as u64);
@@ -62,9 +62,9 @@ impl NetlinkRustyRouterLink {
                     name = Some(ifname.clone())
                 } else if let nlas::Nla::OperState(operational_state) = attribute {
                     state = match operational_state {
-                        nlas::State::Up => rusty_router_model::NetworkInterfaceOperationalState::Up,
-                        nlas::State::Down => rusty_router_model::NetworkInterfaceOperationalState::Down,
-                        _ => rusty_router_model::NetworkInterfaceOperationalState::Unknown,
+                        nlas::State::Up => rusty_router_model::NetworkLinkOperationalState::Up,
+                        nlas::State::Down => rusty_router_model::NetworkLinkOperationalState::Down,
+                        _ => rusty_router_model::NetworkLinkOperationalState::Unknown,
                     }
                 }
             }

@@ -3,9 +3,7 @@ use log::{error, warn};
 use std::error::Error;
 use std::sync::Arc;
 use std::collections::HashMap;
-
 use rusty_router_model::RustyRouter;
-
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
@@ -65,7 +63,7 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
     };
     let nl = rusty_router_platform_linux::LinuxRustyRouter::new(config, Arc::new(socket))?;
 
-    if let Ok(mut interfaces) = nl.list_network_interfaces().await {
+    if let Ok(mut interfaces) = nl.list_network_links().await {
         interfaces.sort_by(|a, b| {
             if let Some(a_name) = a.get_name() {
                 if let Some(b_name) = b.get_name() {
@@ -96,14 +94,14 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
         println!();
     }
 
-    if let Ok(addresses) = nl.list_router_interfaces().await {
+    if let Ok(addresses) = nl.list_network_interfaces().await {
         println!("================================================================================");
         println!("Mapped Router Interfaces");
         println!("================================================================================");
         addresses.iter().for_each(|address| {
             if let Some(name) = address.get_name() {
-                if address.get_network_interface_status().get_operational_state() != &rusty_router_model::NetworkInterfaceOperationalState::NotFound {
-                    println!("{} ({})", name, address.get_network_interface_status().get_device());
+                if address.get_network_link_status().get_operational_state() != &rusty_router_model::NetworkLinkOperationalState::NotFound {
+                    println!("{} ({})", name, address.get_network_link_status().get_device());
                     for addr in address.get_addresses() {
                         println!("\t{}", addr);
                     }
@@ -116,9 +114,9 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
         println!("Missing Network Interfaces");
         println!("================================================================================");
         addresses.iter().for_each(|address| {
-            if address.get_network_interface_status().get_operational_state() == &rusty_router_model::NetworkInterfaceOperationalState::NotFound {
+            if address.get_network_link_status().get_operational_state() == &rusty_router_model::NetworkLinkOperationalState::NotFound {
                 if let Some(name) = address.get_name() {
-                    println!("{} ({})", name, address.get_network_interface_status().get_device());
+                    println!("{} ({})", name, address.get_network_link_status().get_device());
                 }
             }
         });
@@ -129,7 +127,7 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
         println!("================================================================================");
         addresses.iter().for_each(|address| {
             if address.get_name().is_none() {
-                println!("{}", address.get_network_interface_status().get_device());
+                println!("{}", address.get_network_link_status().get_device());
                 for addr in address.get_addresses() {
                     println!("\t{}", addr);
                 }
@@ -139,7 +137,4 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
     };
 
     Ok(())
-    // rusty_router_platform_linux::socket::DefaultNetlinkSocket::new().unwrap().receive_messages(|_a| {
-    //     println!("{:?}", _a);
-    // }).await.unwrap();
 }
