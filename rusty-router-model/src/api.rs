@@ -18,6 +18,5 @@ pub trait RustyRouter {
     async fn list_network_links(&self) -> Result<Vec<NetworkLinkStatus>, Box<dyn Error + Send + Sync>>;
     async fn list_network_interfaces(&self) -> Result<Vec<NetworkInterfaceStatus>, Box<dyn Error + Send + Sync>>;
 
-    // TODO Use interface rather than network device
-    async fn connect_ipv4(&self, network_device: String, protocol: i32, multicast_groups: Vec<Ipv4Addr>, handler: Box<dyn NetworkEventHandler + Send + Sync>) -> Result<Box<dyn NetworkConnection + Send + Sync>, Box<dyn Error + Send + Sync>>;
+    async fn connect_ipv4(&self, network_interface: &String, protocol: i32, multicast_groups: Vec<Ipv4Addr>, handler: Box<dyn NetworkEventHandler + Send + Sync>) -> Result<Box<dyn NetworkConnection + Send + Sync>, Box<dyn Error + Send + Sync>>;
 }
