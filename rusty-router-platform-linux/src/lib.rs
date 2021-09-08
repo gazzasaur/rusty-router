@@ -29,17 +29,17 @@ impl LinuxRustyRouter {
         })
     }
 
-    async fn perform_list_network_interfaces(&self) -> Result<HashMap<u64, link::NetlinkRustyRouterLinkStatus>, Box<dyn Error>> {
+    async fn perform_list_network_interfaces(&self) -> Result<HashMap<u64, link::NetlinkRustyRouterLinkStatus>, Box<dyn Error + Send + Sync>> {
         #[cfg(test)] return crate::tests::list_network_interfaces(&self.netlink_socket).await;
         #[cfg(not(test))] return link::NetlinkRustyRouterLink::list_network_interfaces(&self.netlink_socket).await;
     }
 
-    async fn perform_list_router_interfaces(&self) -> Result<HashMap<u64, route::NetlinkRustyRouterDeviceAddressesResult>, Box<dyn Error>> {
+    async fn perform_list_router_interfaces(&self) -> Result<HashMap<u64, route::NetlinkRustyRouterDeviceAddressesResult>, Box<dyn Error + Send + Sync>> {
         #[cfg(test)] return crate::tests::list_router_interfaces(&self.netlink_socket).await;
         #[cfg(not(test))] return route::NetlinkRustyRouterAddress::list_router_interfaces(&self.netlink_socket).await;
     }
 
-    async fn perform_list_mapped_router_interfaces(&self, network_router_interfaces: &mut HashMap<&String, &String>, addresses: &mut Vec<rusty_router_model::NetworkInterfaceStatus>) -> Result<(), Box<dyn Error>> {
+    async fn perform_list_mapped_router_interfaces(&self, network_router_interfaces: &mut HashMap<&String, &String>, addresses: &mut Vec<rusty_router_model::NetworkInterfaceStatus>) -> Result<(), Box<dyn Error + Send + Sync>> {
         let mut device_id_links = self.perform_list_network_interfaces().await?;
         let mut device_id_addresses = self.perform_list_router_interfaces().await?;
         let mut device_network_interfaces: HashMap<&String, &String> = self.config.get_network_interfaces().iter().map(|(name, interface)| (interface.get_device(), name)).collect();
@@ -63,7 +63,7 @@ impl LinuxRustyRouter {
 }
 #[async_trait]
 impl RustyRouter for LinuxRustyRouter {
-    async fn list_network_links(&self) -> Result<Vec<rusty_router_model::NetworkLinkStatus>, Box<dyn Error>> {
+    async fn list_network_links(&self) -> Result<Vec<rusty_router_model::NetworkLinkStatus>, Box<dyn Error + Send + Sync>> {
         let config = self.config.clone();
         let mut device_id_links = self.perform_list_network_interfaces().await?;
         let mut device_name_links: HashMap<String, link::NetlinkRustyRouterLinkStatus> = device_id_links.drain().map(|(_, link)| (link.get_name().clone(), link)).collect();
@@ -79,7 +79,7 @@ impl RustyRouter for LinuxRustyRouter {
         Ok(links)
     }
 
-    async fn list_network_interfaces(&self) -> Result<Vec<rusty_router_model::NetworkInterfaceStatus>, Box<dyn Error>> {
+    async fn list_network_interfaces(&self) -> Result<Vec<rusty_router_model::NetworkInterfaceStatus>, Box<dyn Error + Send + Sync>> {
         let mut addresses = vec![];
         let mut network_router_interfaces: HashMap<&String, &String> = self.config.get_router_interfaces().iter().map(|(name, interface)| (interface.get_network_interface(), name)).collect();
 
@@ -114,14 +114,14 @@ mod tests {
         static ref ROUTE_TEST_DATA: Arc<Mutex<HashMap<usize, HashMap<u64, route::NetlinkRustyRouterDeviceAddressesResult>>>> = Arc::new(Mutex::new(HashMap::new()));
     }
 
-    pub async fn list_network_interfaces(socket: &Arc<dyn netlink::NetlinkSocket + Send + Sync>) -> Result<HashMap<u64, link::NetlinkRustyRouterLinkStatus>, Box<dyn Error>> {
+    pub async fn list_network_interfaces(socket: &Arc<dyn netlink::NetlinkSocket + Send + Sync>) -> Result<HashMap<u64, link::NetlinkRustyRouterLinkStatus>, Box<dyn Error + Send + Sync>> {
         if let Ok(mut test_data) = LINK_TEST_DATA.lock() { if let Some(test_value) = test_data.remove(&(Arc::as_ptr(socket) as *const () as usize)) {
             return Ok(test_value)
         }}
         panic!("No test data found");
     }
 
-    pub async fn list_router_interfaces(socket: &Arc<dyn netlink::NetlinkSocket + Send + Sync>) -> Result<HashMap<u64, route::NetlinkRustyRouterDeviceAddressesResult>, Box<dyn Error>> {
+    pub async fn list_router_interfaces(socket: &Arc<dyn netlink::NetlinkSocket + Send + Sync>) -> Result<HashMap<u64, route::NetlinkRustyRouterDeviceAddressesResult>, Box<dyn Error + Send + Sync>> {
         if let Ok(mut test_data) = ROUTE_TEST_DATA.lock() { if let Some(test_value) = test_data.remove(&(Arc::as_ptr(socket) as *const () as usize)) {
             return Ok(test_value)
         }}

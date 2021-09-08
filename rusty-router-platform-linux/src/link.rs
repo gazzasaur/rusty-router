@@ -37,7 +37,7 @@ impl NetlinkRustyRouterLinkStatus {
 pub struct NetlinkRustyRouterLink {
 }
 impl NetlinkRustyRouterLink {
-    pub async fn list_network_interfaces(socket: &Arc<dyn netlink::NetlinkSocket + Send + Sync>) -> Result<HashMap<u64, NetlinkRustyRouterLinkStatus>, Box<dyn Error>> {
+    pub async fn list_network_interfaces(socket: &Arc<dyn netlink::NetlinkSocket + Send + Sync>) -> Result<HashMap<u64, NetlinkRustyRouterLinkStatus>, Box<dyn Error + Send + Sync>> {
         let link_message = netlink_packet_route::RtnlMessage::GetLink(netlink_packet_route::LinkMessage::default());
         let packet: netlink_packet_core::NetlinkMessage<netlink_packet_route::RtnlMessage> = netlink::build_default_packet(link_message);
 

@@ -23,7 +23,7 @@ use netlink_packet_route::constants;
 #[automock]
 #[async_trait]
 pub trait NetlinkSocket {
-    async fn send_message(&self, message: netlink_packet_core::NetlinkMessage<netlink_packet_route::RtnlMessage>) -> std::result::Result<Vec<netlink_packet_core::NetlinkMessage<netlink_packet_route::RtnlMessage>>, Box<dyn Error>>;
+    async fn send_message(&self, message: netlink_packet_core::NetlinkMessage<netlink_packet_route::RtnlMessage>) -> std::result::Result<Vec<netlink_packet_core::NetlinkMessage<netlink_packet_route::RtnlMessage>>, Box<dyn Error + Send + Sync>>;
 }
 
 pub struct DefaultNetlinkSocket {
@@ -69,7 +69,7 @@ impl DefaultNetlinkSocket {
         }
     }
 
-    async fn recv_loop(sequence_number: u32, socket: &mut netlink_sys::TokioSocket, mut callback: impl FnMut(netlink_packet_core::NetlinkMessage<netlink_packet_route::RtnlMessage>) -> ()) -> Result<(), Box<dyn Error>> {
+    async fn recv_loop(sequence_number: u32, socket: &mut netlink_sys::TokioSocket, mut callback: impl FnMut(netlink_packet_core::NetlinkMessage<netlink_packet_route::RtnlMessage>) -> ()) -> Result<(), Box<dyn Error + Send + Sync>> {
         // Allocating 32k of memory each call.  This could be passed at the cost of locking.
         let mut receive_buffer = vec![0; (2 as usize).pow(16)];
         
@@ -107,7 +107,7 @@ impl DefaultNetlinkSocket {
 }
 #[async_trait]
 impl NetlinkSocket for DefaultNetlinkSocket {
-    async fn send_message(&self, message: netlink_packet_core::NetlinkMessage<netlink_packet_route::RtnlMessage>) -> Result<Vec<netlink_packet_core::NetlinkMessage<netlink_packet_route::RtnlMessage>>, Box<dyn Error>> {
+    async fn send_message(&self, message: netlink_packet_core::NetlinkMessage<netlink_packet_route::RtnlMessage>) -> Result<Vec<netlink_packet_core::NetlinkMessage<netlink_packet_route::RtnlMessage>>, Box<dyn Error + Send + Sync>> {
         let sequence_number = message.header.sequence_number;
         let socket = self.socket.clone();
         let mut buf = vec![0; message.header.length as usize];

@@ -37,7 +37,7 @@ impl NetlinkRustyRouterDeviceAddressesResult {
 pub struct NetlinkRustyRouterAddress {
 }
 impl NetlinkRustyRouterAddress {
-    pub async fn list_router_interfaces(socket: &Arc<dyn netlink::NetlinkSocket + Send + Sync>) -> Result<HashMap<u64, NetlinkRustyRouterDeviceAddressesResult>, Box<dyn Error>> {
+    pub async fn list_router_interfaces(socket: &Arc<dyn netlink::NetlinkSocket + Send + Sync>) -> Result<HashMap<u64, NetlinkRustyRouterDeviceAddressesResult>, Box<dyn Error + Send + Sync>> {
         let link_message = netlink_packet_route::RtnlMessage::GetAddress(netlink_packet_route::AddressMessage::default());
         let packet: netlink_packet_core::NetlinkMessage<netlink_packet_route::RtnlMessage> = netlink::build_default_packet(link_message);
         let messages = socket.send_message(packet).await?;
