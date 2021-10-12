@@ -2,12 +2,12 @@ use std::net::Ipv4Addr;
 use std::sync::Arc;
 use std::error::Error;
 use async_trait::async_trait;
-use network::Ipv4NetworkConnection;
+use network::LinuxInetPacketNetworkInterface;
 use std::collections::HashMap;
 
 use log::warn;
 
-use rusty_router_model::{self, NetworkConnection, NetworkEventHandler, NetworkInterfaceStatus};
+use rusty_router_model::{self, InetPacketNetworkInterface, NetworkEventHandler, NetworkInterfaceStatus};
 use rusty_router_model::RustyRouter;
 
 pub mod link;
@@ -100,7 +100,7 @@ impl RustyRouter for LinuxRustyRouter {
 
     // This pulls all interfaces and filters down.  This is not expected to occur often, but this is expensive.
     // TODO Store the interfaces on the platform.  Subscribe to changes for updates and run anti-entrophy polls.
-    async fn connect_ipv4(&self, network_interface: &String, protocol: i32, multicast_groups: Vec<Ipv4Addr>, handler: Box<dyn NetworkEventHandler + Send + Sync>) -> Result<Box<dyn NetworkConnection + Send + Sync>, Box<dyn Error + Send + Sync>> {
+    async fn connect_ipv4(&self, network_interface: &String, protocol: i32, multicast_groups: Vec<Ipv4Addr>, handler: Box<dyn NetworkEventHandler + Send + Sync>) -> Result<Box<dyn InetPacketNetworkInterface + Send + Sync>, Box<dyn Error + Send + Sync>> {
         let network_interface: String = network_interface.clone();
         let mut interfaces: Vec<String> = self.list_network_interfaces().await?.drain(..).filter(|interface| {
             // A warning is already emitted if more than one interface with the same name exists
@@ -113,7 +113,7 @@ impl RustyRouter for LinuxRustyRouter {
         }).collect();
 
         match interfaces.pop() {
-            Some(device) => return Ok(Box::new(Ipv4NetworkConnection::new(device, protocol, multicast_groups, handler, &self.network_poller).await?)),
+            Some(device) => return Ok(Box::new(LinuxInetPacketNetworkInterface::new(device, protocol, multicast_groups, handler, &self.network_poller).await?)),
             None => return Err(Box::from(anyhow::anyhow!("Failed to find a device matching {}", network_interface))),
         }
     }

@@ -1,33 +1,33 @@
 use log::{warn, error};
 use std::{error::Error, ffi::OsString, net::Ipv4Addr, sync::Arc};
-use nix::{errno::Errno, sys::socket::IpMembershipRequest, unistd::close};
+use nix::{errno::Errno, sys::socket::{InetAddr, IpAddr, IpMembershipRequest, SockAddr}, unistd::close};
 use tokio::sync::RwLock;
 use async_trait::async_trait;
 use std::os::unix::io::RawFd;
 use std::collections::HashMap;
 use nix::sys::socket::MsgFlags;
-use rusty_router_model::{NetworkConnection, NetworkEventHandler};
+use rusty_router_model::{InetPacketNetworkInterface, NetworkEventHandler};
 use std::sync::atomic::{AtomicBool, Ordering};
 use nix::sys::epoll::{EpollCreateFlags, EpollEvent, EpollFlags, EpollOp, epoll_create1, epoll_ctl, epoll_wait};
 
-pub struct Ipv4NetworkConnection {
+pub struct LinuxInetPacketNetworkInterface {
     poller_item: Arc<PollerItem>,
 }
-impl Ipv4NetworkConnection {
-    pub async fn new(network_device: String, protocol: i32, multicast_groups: Vec<Ipv4Addr>, handler: Box<dyn NetworkEventHandler + Send + Sync>, poller: &Poller) -> Result<Ipv4NetworkConnection, Box<dyn Error + Send + Sync>> {
+impl LinuxInetPacketNetworkInterface {
+    pub async fn new(network_device: String, protocol: i32, multicast_groups: Vec<Ipv4Addr>, handler: Box<dyn NetworkEventHandler + Send + Sync>, poller: &Poller) -> Result<LinuxInetPacketNetworkInterface, Box<dyn Error + Send + Sync>> {
         let sock = Errno::result(unsafe { libc::socket(libc::AF_INET, libc::O_NONBLOCK | libc::SOCK_RAW, protocol) })?;
         let poller_item = poller.add_item(sock, handler).await?;
         for multicast_group in multicast_groups {
-            nix::sys::socket::setsockopt(sock, nix::sys::socket::sockopt::IpAddMembership, &IpMembershipRequest::new(nix::sys::socket::Ipv4Addr::from_std(&multicast_group), None)).unwrap();
+            nix::sys::socket::setsockopt(sock, nix::sys::socket::sockopt::IpAddMembership, &IpMembershipRequest::new(nix::sys::socket::Ipv4Addr::from_std(&multicast_group), None))?;
         }
         nix::sys::socket::setsockopt(sock, nix::sys::socket::sockopt::BindToDevice, &OsString::from(network_device))?;
-        Ok(Ipv4NetworkConnection { poller_item })
+        Ok(LinuxInetPacketNetworkInterface { poller_item })
     }
 }
 #[async_trait]
-impl NetworkConnection for Ipv4NetworkConnection {
-    async fn send(&self, data: Vec<u8>) -> Result<usize, Box<dyn std::error::Error + Send + Sync>> {
-        self.poller_item.send(&data)
+impl InetPacketNetworkInterface for LinuxInetPacketNetworkInterface {
+    async fn send(&self, to: std::net::Ipv4Addr, data: Vec<u8>) -> Result<usize, Box<dyn std::error::Error + Send + Sync>> {
+        Ok(nix::sys::socket::sendto(self.poller_item.fd, &data[..], &SockAddr::Inet(InetAddr::new(IpAddr::from_std(&std::net::IpAddr::V4(to)), 0)), MsgFlags::empty())?)
     }
 }
 
@@ -38,11 +38,6 @@ pub struct PollerItem {
 impl PollerItem {
     pub fn new(fd: RawFd, socket_handler: Box<dyn NetworkEventHandler + Send + Sync>) -> PollerItem {
         PollerItem { fd, socket_handler: Arc::new(socket_handler) }
-    }
-
-    pub fn send(&self, buffer: &Vec<u8>) -> Result<usize, Box<dyn std::error::Error + Send + Sync>> {
-        let fd = self.fd;
-        return Ok(nix::sys::socket::send(fd, &buffer[..], MsgFlags::empty())?);
     }
 
     pub async fn recv(&self) {
@@ -78,7 +73,7 @@ impl Poller {
     pub fn new() -> Result<Poller, Box<dyn std::error::Error + Send + Sync>> {
         let poller_running = Arc::new(AtomicBool::new(true));
         let controller_running = Arc::new(AtomicBool::new(true));
-        
+
         let handlers = Arc::new(RwLock::new(HashMap::new()));
         let task_handlers = handlers.clone();
         let epoll_fd = epoll_create1(EpollCreateFlags::empty())?;
