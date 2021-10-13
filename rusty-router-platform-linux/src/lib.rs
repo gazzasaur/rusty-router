@@ -2,13 +2,14 @@ use std::net::Ipv4Addr;
 use std::sync::Arc;
 use std::error::Error;
 use async_trait::async_trait;
-use network::LinuxInetPacketNetworkInterface;
 use std::collections::HashMap;
 
 use log::warn;
 
 use rusty_router_model::{self, InetPacketNetworkInterface, NetworkEventHandler, NetworkInterfaceStatus};
 use rusty_router_model::RustyRouter;
+
+use crate::network::LinuxInetPacketNetworkInterfaceContainer;
 
 pub mod link;
 pub mod route;
@@ -113,7 +114,7 @@ impl RustyRouter for LinuxRustyRouter {
         }).collect();
 
         match interfaces.pop() {
-            Some(device) => return Ok(Box::new(LinuxInetPacketNetworkInterface::new(device, protocol, multicast_groups, handler, &self.network_poller).await?)),
+            Some(device) => return Ok(Box::new(LinuxInetPacketNetworkInterfaceContainer::new(device, protocol, multicast_groups, handler, &self.network_poller).await?)),
             None => return Err(Box::from(anyhow::anyhow!("Failed to find a device matching {}", network_interface))),
         }
     }
