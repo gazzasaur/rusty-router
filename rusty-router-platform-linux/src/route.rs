@@ -30,7 +30,7 @@ impl NetlinkRustyRouterDeviceAddressesResult {
     }
 
     pub fn add_address(&mut self, address: rusty_router_model::IpAddress) -> () {
-        &mut self.addresses.push(address);
+        self.addresses.push(address);
     }
 }
 

@@ -117,7 +117,7 @@ impl NetlinkSocket for DefaultNetlinkSocket {
     
         let mut received_messages = Vec::new();
         DefaultNetlinkSocket::recv_loop(sequence_number, &mut socket, |rx_packet| {
-             &received_messages.push(rx_packet);
+            received_messages.push(rx_packet);
         }).await?;
         Ok(received_messages)
     }
