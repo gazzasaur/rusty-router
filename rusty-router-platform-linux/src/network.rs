@@ -10,6 +10,58 @@ use rusty_router_model::{InetPacketNetworkInterface, NetworkEventHandler};
 use std::sync::atomic::{AtomicBool, Ordering};
 use nix::sys::epoll::{EpollCreateFlags, EpollEvent, EpollFlags, EpollOp, epoll_create1, epoll_ctl, epoll_wait};
 
+pub struct LinuxInetPacketNetworkInterface {
+    _ticket: PollerTicket, // Need to store this as it must have the same scope as the container.
+    sock: Arc<AutoCloseFd>,
+}
+impl LinuxInetPacketNetworkInterface {
+    pub async fn new(network_device: String, protocol: i32, multicast_groups: Vec<Ipv4Addr>, handler: Box<dyn NetworkEventHandler + Send + Sync>, poller: &Poller) -> Result<LinuxInetPacketNetworkInterface, Box<dyn Error + Send + Sync>> {
+        let sock = Arc::from(AutoCloseFd::new(Errno::result(unsafe { libc::socket(libc::AF_INET, libc::O_NONBLOCK | libc::SOCK_RAW, protocol) })?));
+        for multicast_group in multicast_groups {
+            nix::sys::socket::setsockopt(sock.get(), nix::sys::socket::sockopt::IpAddMembership, &IpMembershipRequest::new(nix::sys::socket::Ipv4Addr::from_std(&multicast_group), None))?;
+        }
+        nix::sys::socket::setsockopt(sock.get(), nix::sys::socket::sockopt::BindToDevice, &OsString::from(network_device))?;
+
+        let real: Arc<Box<dyn PollerListener + Send + Sync>> = Arc::new(Box::new(LinuxInetPacketNetworkInterfacePollerListener::new(sock.clone(), handler).await?));
+        let poller_ticket = poller.add_item(sock.get(), real).await?;
+
+        Ok(LinuxInetPacketNetworkInterface { sock: sock, _ticket: poller_ticket })
+    }
+}
+#[async_trait]
+impl InetPacketNetworkInterface for LinuxInetPacketNetworkInterface {
+    async fn send(&self, to: std::net::Ipv4Addr, data: Vec<u8>) -> Result<usize, Box<dyn std::error::Error + Send + Sync>> {
+        Ok(nix::sys::socket::sendto(self.sock.get(), &data[..], &SockAddr::Inet(InetAddr::new(IpAddr::from_std(&std::net::IpAddr::V4(to)), 0)), MsgFlags::empty())?)
+    }
+}
+pub struct LinuxInetPacketNetworkInterfacePollerListener {
+    sock: Arc<AutoCloseFd>,
+    handler: Arc<Box<dyn NetworkEventHandler + Send + Sync>>,
+}
+impl LinuxInetPacketNetworkInterfacePollerListener {
+    pub async fn new(sock: Arc<AutoCloseFd>, handler: Box<dyn NetworkEventHandler + Send + Sync>) -> Result<LinuxInetPacketNetworkInterfacePollerListener, Box<dyn Error + Send + Sync>> {
+        let handler = Arc::new(handler);
+        Ok(LinuxInetPacketNetworkInterfacePollerListener { sock, handler })
+    }
+}
+#[async_trait]
+impl PollerListener for LinuxInetPacketNetworkInterfacePollerListener {
+    async fn recv(&self) {
+        let mut buffer = [0 as u8; 65535];
+        loop {
+            match nix::sys::socket::recvfrom(self.sock.get(), &mut buffer) {
+                Ok((size, Some(_))) => self.handler.on_recv(buffer[0..size].to_vec()).await,
+                Ok((size, None)) => self.handler.on_recv(buffer[0..size].to_vec()).await, // Always expect source address
+                Err(nix::Error::Sys(nix::errno::Errno::EAGAIN)) => return,
+                Err(nix::Error::Sys(errno)) => self.handler.on_error(format!("Failed to read from socket: {}", errno)).await,
+                Err(e) => {
+                    error!("Failed to read from socket: {:?}", e)
+                },
+            }
+        }
+    }
+}
+
 pub struct AutoCloseFd {
     fd: RawFd
 }
@@ -30,6 +82,11 @@ impl Drop for AutoCloseFd {
     }
 }
 
+#[async_trait]
+pub trait PollerListener {
+    async fn recv(&self);
+}
+
 pub struct PollerTicket {
     handler_id: u64,
     handlers: Arc<RwLock<HashMap<u64, Arc<Box<dyn PollerListener + Send + Sync>>>>>,
@@ -46,64 +103,6 @@ impl Drop for PollerTicket {
         tokio::task::spawn(async move {
             handlers.write().await.remove(&handler_id);
         });
-    }
-}
-
-#[async_trait]
-pub trait PollerListener {
-    async fn recv(&self);
-}
-
-pub struct LinuxInetPacketNetworkInterfaceContainer {
-    _ticket: PollerTicket, // Need to store this as it must have the same scope as the container.
-    sock: Arc<AutoCloseFd>,
-}
-impl LinuxInetPacketNetworkInterfaceContainer {
-    pub async fn new(network_device: String, protocol: i32, multicast_groups: Vec<Ipv4Addr>, handler: Box<dyn NetworkEventHandler + Send + Sync>, poller: &Poller) -> Result<LinuxInetPacketNetworkInterfaceContainer, Box<dyn Error + Send + Sync>> {
-        let sock = Arc::from(AutoCloseFd::new(Errno::result(unsafe { libc::socket(libc::AF_INET, libc::O_NONBLOCK | libc::SOCK_RAW, protocol) })?));
-        for multicast_group in multicast_groups {
-            nix::sys::socket::setsockopt(sock.get(), nix::sys::socket::sockopt::IpAddMembership, &IpMembershipRequest::new(nix::sys::socket::Ipv4Addr::from_std(&multicast_group), None))?;
-        }
-        nix::sys::socket::setsockopt(sock.get(), nix::sys::socket::sockopt::BindToDevice, &OsString::from(network_device))?;
-
-        let real: Arc<Box<dyn PollerListener + Send + Sync>> = Arc::new(Box::new(LinuxInetPacketNetworkInterface::new(sock.clone(), handler).await?));
-        let poller_ticket = poller.add_item(sock.get(), real).await?;
-
-        Ok(LinuxInetPacketNetworkInterfaceContainer { sock: sock, _ticket: poller_ticket })
-    }
-}
-#[async_trait]
-impl InetPacketNetworkInterface for LinuxInetPacketNetworkInterfaceContainer {
-    async fn send(&self, to: std::net::Ipv4Addr, data: Vec<u8>) -> Result<usize, Box<dyn std::error::Error + Send + Sync>> {
-        Ok(nix::sys::socket::sendto(self.sock.get(), &data[..], &SockAddr::Inet(InetAddr::new(IpAddr::from_std(&std::net::IpAddr::V4(to)), 0)), MsgFlags::empty())?)
-    }
-}
-
-pub struct LinuxInetPacketNetworkInterface {
-    sock: Arc<AutoCloseFd>,
-    handler: Arc<Box<dyn NetworkEventHandler + Send + Sync>>,
-}
-impl LinuxInetPacketNetworkInterface {
-    pub async fn new(sock: Arc<AutoCloseFd>, handler: Box<dyn NetworkEventHandler + Send + Sync>) -> Result<LinuxInetPacketNetworkInterface, Box<dyn Error + Send + Sync>> {
-        let handler = Arc::new(handler);
-        Ok(LinuxInetPacketNetworkInterface { sock, handler })
-    }
-}
-#[async_trait]
-impl PollerListener for LinuxInetPacketNetworkInterface {
-    async fn recv(&self) {
-        let mut buffer = [0 as u8; 65535];
-        loop {
-            match nix::sys::socket::recvfrom(self.sock.get(), &mut buffer) {
-                Ok((size, Some(_))) => self.handler.on_recv(buffer[0..size].to_vec()).await,
-                Ok((size, None)) => self.handler.on_recv(buffer[0..size].to_vec()).await, // Always expect source address
-                Err(nix::Error::Sys(nix::errno::Errno::EAGAIN)) => return,
-                Err(nix::Error::Sys(errno)) => self.handler.on_error(format!("Failed to read from socket: {}", errno)).await,
-                Err(e) => {
-                    error!("Failed to read from socket: {:?}", e)
-                },
-            }
-        }
     }
 }
 
@@ -173,7 +172,6 @@ impl Poller {
         Ok(())
     }
 
-    /* Once called, the fd belongs to this class and will be closed by it */
     pub async fn add_item(&self, fd: RawFd, socket_handler: Arc<Box<dyn PollerListener + Send + Sync>>) -> Result<PollerTicket, Box<dyn std::error::Error + Send + Sync>> {
         let epoll_fd = self.epoll_fd;
         let handlers = self.handlers.clone();
