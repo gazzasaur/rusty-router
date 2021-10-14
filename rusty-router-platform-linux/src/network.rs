@@ -49,9 +49,8 @@ impl PollerListener for LinuxInetPacketNetworkInterfacePollerListener {
     async fn recv(&self) {
         let mut buffer = [0 as u8; 65535];
         loop {
-            match nix::sys::socket::recvfrom(self.sock.get(), &mut buffer) {
-                Ok((size, Some(_))) => self.handler.on_recv(buffer[0..size].to_vec()).await,
-                Ok((size, None)) => self.handler.on_recv(buffer[0..size].to_vec()).await, // Always expect source address
+            match nix::sys::socket::recv(self.sock.get(), &mut buffer, MsgFlags::empty()) {
+                Ok(size) => self.handler.on_recv(buffer[0..size].to_vec()).await,
                 Err(nix::Error::Sys(nix::errno::Errno::EAGAIN)) => return,
                 Err(nix::Error::Sys(errno)) => self.handler.on_error(format!("Failed to read from socket: {}", errno)).await,
                 Err(e) => {
