@@ -10,6 +10,37 @@ pub enum IpVersion {
     IPv4,
 }
 
+pub enum Ipv4Flag {
+    DontFragment,
+    MoreFragments,
+}
+impl Ipv4Flag {
+    fn get_value(&self) -> u8 {
+        match self {
+            Self::DontFragment => 2,
+            Self::MoreFragments => 4,
+        }
+    }
+}
+
+#[derive(PartialEq, Eq, Debug)]
+pub struct Ipv4Flags {
+    flags: u8,
+}
+impl Ipv4Flags {
+    pub fn new(flags: &[Ipv4Flag]) -> Ipv4Flags {
+        let mut ipv4_flags = 0u8;
+        for flag in flags {
+            ipv4_flags |= flag.get_value();
+        }
+        Ipv4Flags { flags: ipv4_flags }
+    }
+
+    pub fn is_set(&self, flag: Ipv4Flag) -> bool {
+        (self.flags & (flag as u8)) == !0
+    }
+}
+
 pub struct IpV4Header {
     version: IpVersion,
     header_length: u16,
@@ -17,7 +48,7 @@ pub struct IpV4Header {
     total_length: u16,
 
     identification: u16,
-    flags: u8,
+    flags: Ipv4Flags,
     fragment_offset: u16,
 
     time_to_live: u8,
@@ -26,7 +57,7 @@ pub struct IpV4Header {
     source_address: u32,
     destination_address: u32,
 
-    // TODO Do not need to process options for now    
+    // Options are ignored
 }
 impl IpV4Header {
     pub fn get_version(&self) -> &IpVersion {
@@ -49,8 +80,8 @@ impl IpV4Header {
         self.identification
     }
 
-    pub fn get_flags(&self) -> u8 {
-        self.flags
+    pub fn get_flags(&self) -> &Ipv4Flags {
+        &self.flags
     }
 
     pub fn get_fragment_offset(&self) -> u16 {
@@ -103,7 +134,6 @@ impl TryFrom<&[u8]> for IpV4Header {
         let type_of_service = data[1];
         let total_length = from_be_bytes!(u16, PROTO, &data[2..4]);
         let identification = from_be_bytes!(u16, PROTO, &data[4..6]);
-        let flags = (data[6] >> 5) & 0x07;
         let fragment_offset = (from_be_bytes!(u16, PROTO, &data[6..8]) & 0x1FFF) * 8;
         let time_to_live = data[8];
         let protocol = data[9];
@@ -117,7 +147,7 @@ impl TryFrom<&[u8]> for IpV4Header {
             type_of_service,
             total_length,
             identification,
-            flags,
+            flags: Ipv4Flags::new(&[Ipv4Flag::DontFragment, Ipv4Flag::MoreFragments]),
             fragment_offset,
             time_to_live,
             protocol,
@@ -127,6 +157,7 @@ impl TryFrom<&[u8]> for IpV4Header {
         })
     }
 }
+
 
 #[cfg(test)]
 mod tests {
@@ -142,7 +173,7 @@ mod tests {
         assert_eq!(header.get_header_length(), 20);
         assert_eq!(header.get_total_length(), 8760);
         assert_eq!(header.get_identification(), 20058);
-        assert_eq!(header.get_flags(), 5);
+        assert_eq!(header.get_flags(), &Ipv4Flags::new(&[Ipv4Flag::DontFragment, Ipv4Flag::MoreFragments]));
         assert_eq!(header.get_type_of_service(), 12);
         assert_eq!(header.get_fragment_offset(), 35600);
         assert_eq!(header.get_time_to_live(), 127);
