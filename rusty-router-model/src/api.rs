@@ -15,6 +15,11 @@ pub trait InetPacketNetworkInterface {
 
 #[async_trait]
 pub trait RustyRouter {
+    async fn fetch_instance(&self) -> Result<Box<dyn RustyRouterInstance + Send + Sync>, Box<dyn Error + Send + Sync>>;
+}
+
+#[async_trait]
+pub trait RustyRouterInstance {
     async fn list_network_links(&self) -> Result<Vec<NetworkLinkStatus>, Box<dyn Error + Send + Sync>>;
     async fn list_network_interfaces(&self) -> Result<Vec<NetworkInterfaceStatus>, Box<dyn Error + Send + Sync>>;
 
