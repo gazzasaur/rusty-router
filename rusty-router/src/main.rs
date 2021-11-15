@@ -2,8 +2,22 @@ use env_logger;
 use log::{error, warn};
 use std::error::Error;
 use std::sync::Arc;
+use async_trait::async_trait;
 use std::collections::HashMap;
-use rusty_router_model::RustyRouter;
+use rusty_router_model::{NetworkEventHandler, RustyRouter};
+
+struct MyNetworkEventHandler {
+}
+#[async_trait]
+impl NetworkEventHandler for MyNetworkEventHandler {
+    async fn on_recv(&self, data: Vec<u8>) {
+        println!("{:?}", data);
+    }
+
+    async fn on_error(&self, message: String) {
+        println!("{:?}", message);
+    }
+}
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
@@ -40,6 +54,9 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
         )), ("iface2".to_string(), rusty_router_model::NetworkInterface::new(
             "dummy0".to_string(),
             rusty_router_model::NetworkInterfaceType::GenericInterface,
+        )), ("iface3".to_string(), rusty_router_model::NetworkInterface::new(
+            "lo".to_string(),
+            rusty_router_model::NetworkInterfaceType::GenericInterface,
         ))].into_iter().collect(),
         vec![("Inside".to_string(), rusty_router_model::RouterInterface::new(
             None,
@@ -53,6 +70,10 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
             None,
             "doesnotexist".to_string(),
             vec![],
+        )), ("Loopback".to_string(), rusty_router_model::RouterInterface::new(
+            None,
+            "iface3".to_string(),
+            vec![],
         ))].into_iter().collect(),
         HashMap::new(),
     );
@@ -62,6 +83,7 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
         Err(_) => return Ok(()),
     };
     let nl = rusty_router_platform_linux::LinuxRustyRouter::new(config, Arc::new(socket))?;
+    let nl = nl.fetch_instance().await?;
 
     if let Ok(mut interfaces) = nl.list_network_links().await {
         interfaces.sort_by(|a, b| {
@@ -135,6 +157,13 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
         });
         println!();
     };
+
+    {
+        let device = nl.connect_ipv4(&"Loopback".to_string(), 98, Vec::new(), Box::new(MyNetworkEventHandler {  })).await?;
+        device.send("127.0.0.1".parse()?, "Got it".as_bytes().to_vec()).await?;
+        tokio::time::sleep(std::time::Duration::from_millis(1)).await;
+    }
+    tokio::time::sleep(std::time::Duration::from_millis(10000)).await;
 
     Ok(())
 }
