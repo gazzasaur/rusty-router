@@ -1,6 +1,11 @@
 # rusty-router
 A network router written in rust.
 
+[![license](https://github.com/gazzasaur/status/blob/main/rusty-router/license.png?raw=true "License")](/LICENSE?raw=true)
+![commit](https://github.com/gazzasaur/status/blob/main/rusty-router/commit.png?raw=true "Commit")
+![build](https://github.com/gazzasaur/status/blob/main/rusty-router/build.png?raw=true "Build")
+![coverage](https://github.com/gazzasaur/status/blob/main/rusty-router/coverage.png?raw=true "Coverage")
+
 This is my first real-world application of Rust.  I mainly use Java and C++ today.  I am looking at Rust to replace my need for C++ as I have noticed I can develop faster in Rust.
 
 I chose to implement a router as I have a passion for Routing Protocols.  Routing was my first real exposure to a large scale distributed systems.  I spent most of my time on monolithic systems before this.  I still see many of the concepts baked into RFCs from decades ago being applied as *new* techniques today.
