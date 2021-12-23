@@ -46,11 +46,11 @@ impl RustyRouterInstance for LinuxRustyRouterInstance {
     }
 
     async fn list_network_interfaces(&self) -> Result<Vec<rusty_router_model::NetworkInterfaceStatus>, Box<dyn Error + Send + Sync>> {
-        Ok(self.list_network_interfaces().await?)
+        Ok(self.platform.list_network_interfaces().await?)
     }
 
     async fn connect_ipv4(&self, network_interface: &String, protocol: i32, multicast_groups: Vec<Ipv4Addr>, handler: Box<dyn NetworkEventHandler + Send + Sync>) -> Result<Box<dyn InetPacketNetworkInterface + Send + Sync>, Box<dyn Error + Send + Sync>> {
-        Ok(self.connect_ipv4(network_interface, protocol, multicast_groups, handler).await?)
+        Ok(self.platform.connect_ipv4(network_interface, protocol, multicast_groups, handler).await?)
     }
 }
 

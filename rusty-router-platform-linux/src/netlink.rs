@@ -22,6 +22,12 @@ use netlink_packet_route::constants;
 
 #[automock]
 #[async_trait]
+pub trait NetlinkSocketListener {
+    async fn message_received(&self, message: netlink_packet_core::NetlinkMessage<netlink_packet_route::RtnlMessage>);
+}
+
+#[automock]
+#[async_trait]
 pub trait NetlinkSocketFactory {
     async fn create_socket(&self) -> std::result::Result<Box<dyn NetlinkSocket + Send + Sync>, Box<dyn Error + Send + Sync>>;
 }
@@ -30,6 +36,15 @@ pub trait NetlinkSocketFactory {
 #[async_trait]
 pub trait NetlinkSocket {
     async fn send_message(&self, message: netlink_packet_core::NetlinkMessage<netlink_packet_route::RtnlMessage>) -> std::result::Result<Vec<netlink_packet_core::NetlinkMessage<netlink_packet_route::RtnlMessage>>, Box<dyn Error + Send + Sync>>;
+}
+
+pub struct LogOnlyNetlinkSocketListener {
+}
+#[async_trait]
+impl NetlinkSocketListener for LogOnlyNetlinkSocketListener {
+    async fn message_received(&self, message: netlink_packet_core::NetlinkMessage<netlink_packet_route::RtnlMessage>) {
+        warn!("{:?}", message);
+    }
 }
 
 pub struct DefaultNetlinkSocketFactory {
@@ -63,12 +78,12 @@ impl DefaultNetlinkSocket {
         let running = Arc::new(AtomicBool::new(true));
         let task_running = running.clone();
         tokio::task::spawn(async move {
-            DefaultNetlinkSocket::recv_multicast_messages(task_running, Arc::new(Mutex::new(multicast_socket))).await;
+            DefaultNetlinkSocket::recv_multicast_messages(task_running, Box::new(LogOnlyNetlinkSocketListener { }), Arc::new(Mutex::new(multicast_socket))).await;
         });
         Ok(DefaultNetlinkSocket { running, socket: Arc::new(Mutex::new(socket)) })
     }
 
-    async fn recv_multicast_messages(running: Arc<AtomicBool>, multicast_socket: Arc<Mutex<netlink_sys::TokioSocket>>) {
+    async fn recv_multicast_messages(running: Arc<AtomicBool>, listener: Box<dyn NetlinkSocketListener + Send + Sync>, multicast_socket: Arc<Mutex<netlink_sys::TokioSocket>>) {
         let mut receive_buffer = vec![0; (2 as usize).pow(16)];
 
         while running.load(Ordering::SeqCst) {
@@ -80,7 +95,7 @@ impl DefaultNetlinkSocket {
                     Ok(data) => {
                         let res: std::result::Result<netlink_packet_core::NetlinkMessage<netlink_packet_route::RtnlMessage>, DecodeError> = netlink_packet_route::NetlinkMessage::deserialize(&receive_buffer[..data]);
                         if let Ok(rx_packet) = res {
-                            error!("Failed to read from netlink multicast socket {:?}", rx_packet);
+                            listener.message_received(rx_packet).await;
                         }
                     },
                     Err(e) => error!("Failed to fetch data from multicast socket: {:?}", e),
