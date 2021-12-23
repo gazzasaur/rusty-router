@@ -22,8 +22,28 @@ use netlink_packet_route::constants;
 
 #[automock]
 #[async_trait]
+pub trait NetlinkSocketFactory {
+    async fn create_socket(&self) -> std::result::Result<Box<dyn NetlinkSocket + Send + Sync>, Box<dyn Error + Send + Sync>>;
+}
+
+#[automock]
+#[async_trait]
 pub trait NetlinkSocket {
     async fn send_message(&self, message: netlink_packet_core::NetlinkMessage<netlink_packet_route::RtnlMessage>) -> std::result::Result<Vec<netlink_packet_core::NetlinkMessage<netlink_packet_route::RtnlMessage>>, Box<dyn Error + Send + Sync>>;
+}
+
+pub struct DefaultNetlinkSocketFactory {
+}
+impl DefaultNetlinkSocketFactory {
+    pub fn new() -> DefaultNetlinkSocketFactory {
+        DefaultNetlinkSocketFactory { }
+    }
+}
+#[async_trait]
+impl NetlinkSocketFactory for DefaultNetlinkSocketFactory {
+    async fn create_socket(&self) -> std::result::Result<Box<dyn NetlinkSocket + Send + Sync>, Box<dyn Error + Send + Sync>> {
+        Ok(Box::new(DefaultNetlinkSocket::new()?))
+    }
 }
 
 pub struct DefaultNetlinkSocket {
@@ -31,7 +51,7 @@ pub struct DefaultNetlinkSocket {
     socket: Arc<Mutex<netlink_sys::TokioSocket>>,
 }
 impl DefaultNetlinkSocket {
-    pub fn new() -> Result<DefaultNetlinkSocket, Box<dyn Error>> {
+    pub fn new() -> Result<DefaultNetlinkSocket, Box<dyn Error + Send + Sync>> {
         let mut socket = netlink_sys::TokioSocket::new(protocols::NETLINK_ROUTE)?;
         socket.bind_auto()?;
         socket.connect(&netlink_sys::SocketAddr::new(0, 0))?;
@@ -138,4 +158,34 @@ pub fn build_default_packet(message: netlink_packet_route::RtnlMessage) -> netli
     packet.finalize();
 
     return packet;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::error::Error;
+
+    #[tokio::test]
+    async fn test_default_socket() -> Result<(), Box<dyn Error + Send + Sync>> {
+        let factory = DefaultNetlinkSocketFactory::new();
+        let socket = factory.create_socket().await?;
+        let link_message = netlink_packet_route::RtnlMessage::GetLink(netlink_packet_route::LinkMessage::default());
+        let packet: netlink_packet_core::NetlinkMessage<netlink_packet_route::RtnlMessage> = build_default_packet(link_message);
+        let messages = socket.send_message(packet).await?;
+
+        let mut loopback_found = false;
+        for message in messages {
+            if let netlink_packet_core::NetlinkPayload::InnerMessage(netlink_packet_route::RtnlMessage::NewLink(msg)) = message.payload {
+                for attribute in msg.nlas {
+                    if let netlink_packet_route::rtnl::link::nlas::Nla::IfName(name) = attribute {
+                        if name == "lo" {
+                            loopback_found = true;
+                        }
+                    }
+                }
+            }
+        }
+        assert!(loopback_found);
+        Ok(())
+    }
 }
