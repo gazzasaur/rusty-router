@@ -78,11 +78,8 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
         HashMap::new(),
     );
 
-    let socket = match rusty_router_platform_linux::netlink::DefaultNetlinkSocket::new() {
-        Ok(socket) => socket,
-        Err(_) => return Ok(()),
-    };
-    let nl = rusty_router_platform_linux::LinuxRustyRouter::new(config, Arc::new(socket))?;
+    let socket_factory = rusty_router_platform_linux::netlink::DefaultNetlinkSocketFactory::new();
+    let nl = rusty_router_platform_linux::LinuxRustyRouter::new(config, Arc::new(socket_factory)).await?;
     let nl = nl.fetch_instance().await?;
 
     if let Ok(mut interfaces) = nl.list_network_links().await {

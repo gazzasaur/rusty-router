@@ -2,6 +2,7 @@ use std::net::Ipv4Addr;
 use std::sync::Arc;
 use std::error::Error;
 use async_trait::async_trait;
+use netlink::LogOnlyNetlinkSocketListener;
 use std::collections::HashMap;
 
 use log::warn;
@@ -20,8 +21,8 @@ pub struct LinuxRustyRouter {
     platform: Arc<LinuxRustyRouterPlatform>,
 }
 impl LinuxRustyRouter {
-    pub fn new(config: rusty_router_model::Router, netlink_socket: Arc<dyn netlink::NetlinkSocket + Send + Sync>) -> Result<LinuxRustyRouter, Box<dyn Error + Send + Sync>> {
-        Ok(LinuxRustyRouter { platform: Arc::new(LinuxRustyRouterPlatform::new(config, netlink_socket)?) })
+    pub async fn new(config: rusty_router_model::Router, netlink_socket_factory: Arc<dyn netlink::NetlinkSocketFactory + Send + Sync>) -> Result<LinuxRustyRouter, Box<dyn Error + Send + Sync>> {
+        Ok(LinuxRustyRouter { platform: Arc::new(LinuxRustyRouterPlatform::new(config, netlink_socket_factory).await?) })
     }
 }
 #[async_trait]
@@ -60,9 +61,9 @@ struct LinuxRustyRouterPlatform {
     netlink_socket: Arc<dyn netlink::NetlinkSocket + Send + Sync>,
 }
 impl LinuxRustyRouterPlatform {
-    fn new(config: rusty_router_model::Router, netlink_socket: Arc<dyn netlink::NetlinkSocket + Send + Sync>) -> Result<LinuxRustyRouterPlatform, Box<dyn Error + Send + Sync>> {
+    pub async fn new(config: rusty_router_model::Router, netlink_socket_factory: Arc<dyn netlink::NetlinkSocketFactory + Send + Sync>) -> Result<LinuxRustyRouterPlatform, Box<dyn Error + Send + Sync>> {
         Ok(LinuxRustyRouterPlatform {
-            netlink_socket,
+            netlink_socket: netlink_socket_factory.create_socket(Arc::new(LogOnlyNetlinkSocketListener::new())).await?,
             config: Arc::new(config),
             network_poller: network::Poller::new()?,
         })
@@ -192,7 +193,10 @@ mod tests {
             test_data.insert(Arc::as_ptr(&mock_netlink_socket) as * const () as usize, HashMap::new());
         }
 
-        let subject = LinuxRustyRouterPlatform::new(config, mock_netlink_socket.clone())?;
+        let mut mock_netlink_socket_factory = netlink::MockNetlinkSocketFactory::new();
+        mock_netlink_socket_factory.expect_create_socket().returning(move |_| Ok(mock_netlink_socket.clone()));
+
+        let subject = LinuxRustyRouterPlatform::new(config, Arc::new(mock_netlink_socket_factory)).await?;
         match subject.list_network_links().await {
             Ok(actual) => assert_eq!(actual, vec![]),
             Err(_) => panic!("Test Failed"),
@@ -221,7 +225,10 @@ mod tests {
             )].into_iter().collect());
         }
 
-        let subject = LinuxRustyRouterPlatform::new(config, mock_netlink_socket.clone())?;
+        let mut mock_netlink_socket_factory = netlink::MockNetlinkSocketFactory::new();
+        mock_netlink_socket_factory.expect_create_socket().returning(move |_| Ok(mock_netlink_socket.clone()));
+
+        let subject = LinuxRustyRouterPlatform::new(config, Arc::new(mock_netlink_socket_factory)).await?;
         match subject.list_network_links().await {
             Ok(actual) => assert_eq!(actual, vec![rusty_router_model::NetworkLinkStatus::new("test_iface".to_string(), None, state.clone() )]),
             Err(_) => panic!("Test Failed"),
@@ -240,7 +247,10 @@ mod tests {
             test_data.insert(Arc::as_ptr(&mock_netlink_socket) as * const () as usize, HashMap::new());
         }
 
-        let subject = LinuxRustyRouterPlatform::new(config, mock_netlink_socket.clone())?;
+        let mut mock_netlink_socket_factory = netlink::MockNetlinkSocketFactory::new();
+        mock_netlink_socket_factory.expect_create_socket().returning(move |_| Ok(mock_netlink_socket.clone()));
+
+        let subject = LinuxRustyRouterPlatform::new(config, Arc::new(mock_netlink_socket_factory)).await?;
         match subject.list_network_links().await {
             Ok(actual) => assert_eq!(actual, vec![rusty_router_model::NetworkLinkStatus::new("eth0".to_string(), Some("iface0".to_string()), rusty_router_model::NetworkLinkOperationalState::NotFound)]),
             Err(_) => panic!("Test Failed"),
@@ -262,7 +272,10 @@ mod tests {
             )].into_iter().collect());
         }
 
-        let subject = LinuxRustyRouterPlatform::new(config, mock_netlink_socket.clone())?;
+        let mut mock_netlink_socket_factory = netlink::MockNetlinkSocketFactory::new();
+        mock_netlink_socket_factory.expect_create_socket().returning(move |_| Ok(mock_netlink_socket.clone()));
+
+        let subject = LinuxRustyRouterPlatform::new(config, Arc::new(mock_netlink_socket_factory)).await?;
         match subject.list_network_links().await {
             Ok(actual) => assert_eq!(actual, vec![rusty_router_model::NetworkLinkStatus::new("eth0".to_string(), Some("iface0".to_string()), rusty_router_model::NetworkLinkOperationalState::Up)]),
             Err(_) => panic!("Test Failed"),
@@ -282,7 +295,10 @@ mod tests {
             test_data.insert(Arc::as_ptr(&mock_netlink_socket) as * const () as usize, HashMap::new());
         }
 
-        let subject = LinuxRustyRouterPlatform::new(config, mock_netlink_socket.clone())?;
+        let mut mock_netlink_socket_factory = netlink::MockNetlinkSocketFactory::new();
+        mock_netlink_socket_factory.expect_create_socket().returning(move |_| Ok(mock_netlink_socket.clone()));
+
+        let subject = LinuxRustyRouterPlatform::new(config, Arc::new(mock_netlink_socket_factory)).await?;
         match subject.list_network_interfaces().await {
             Ok(actual) => assert_eq!(actual, vec![]),
             Err(_) => panic!("Test Failed"),
@@ -308,7 +324,10 @@ mod tests {
             )].into_iter().collect());
         }
 
-        let subject = LinuxRustyRouterPlatform::new(config, mock_netlink_socket.clone())?;
+        let mut mock_netlink_socket_factory = netlink::MockNetlinkSocketFactory::new();
+        mock_netlink_socket_factory.expect_create_socket().returning(move |_| Ok(mock_netlink_socket.clone()));
+
+        let subject = LinuxRustyRouterPlatform::new(config, Arc::new(mock_netlink_socket_factory)).await?;
         match subject.list_network_interfaces().await {
             Ok(actual) => assert_eq!(actual, vec![rusty_router_model::NetworkInterfaceStatus::new(
                 None, vec![rusty_router_model::IpAddress::new(
@@ -339,7 +358,10 @@ mod tests {
             test_data.insert(Arc::as_ptr(&mock_netlink_socket) as * const () as usize, HashMap::new());
         }
 
-        let subject = LinuxRustyRouterPlatform::new(config, mock_netlink_socket.clone())?;
+        let mut mock_netlink_socket_factory = netlink::MockNetlinkSocketFactory::new();
+        mock_netlink_socket_factory.expect_create_socket().returning(move |_| Ok(mock_netlink_socket.clone()));
+
+        let subject = LinuxRustyRouterPlatform::new(config, Arc::new(mock_netlink_socket_factory)).await?;
         match subject.list_network_interfaces().await {
             Ok(actual) => assert_eq!(actual, vec![rusty_router_model::NetworkInterfaceStatus::new(
                 Some("Link1".to_string()), vec![], rusty_router_model::NetworkLinkStatus::new(

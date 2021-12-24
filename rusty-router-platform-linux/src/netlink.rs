@@ -29,7 +29,7 @@ pub trait NetlinkSocketListener {
 #[automock]
 #[async_trait]
 pub trait NetlinkSocketFactory {
-    async fn create_socket(&self) -> std::result::Result<Box<dyn NetlinkSocket + Send + Sync>, Box<dyn Error + Send + Sync>>;
+    async fn create_socket(&self, listener: Arc<dyn NetlinkSocketListener + Send + Sync>) -> std::result::Result<Arc<dyn NetlinkSocket + Send + Sync>, Box<dyn Error + Send + Sync>>;
 }
 
 #[automock]
@@ -39,6 +39,11 @@ pub trait NetlinkSocket {
 }
 
 pub struct LogOnlyNetlinkSocketListener {
+}
+impl LogOnlyNetlinkSocketListener {
+    pub fn new() -> LogOnlyNetlinkSocketListener {
+        LogOnlyNetlinkSocketListener { }
+    }
 }
 #[async_trait]
 impl NetlinkSocketListener for LogOnlyNetlinkSocketListener {
@@ -56,8 +61,8 @@ impl DefaultNetlinkSocketFactory {
 }
 #[async_trait]
 impl NetlinkSocketFactory for DefaultNetlinkSocketFactory {
-    async fn create_socket(&self) -> std::result::Result<Box<dyn NetlinkSocket + Send + Sync>, Box<dyn Error + Send + Sync>> {
-        Ok(Box::new(DefaultNetlinkSocket::new()?))
+    async fn create_socket(&self, _listener: Arc<dyn NetlinkSocketListener + Send + Sync>) -> std::result::Result<Arc<dyn NetlinkSocket + Send + Sync>, Box<dyn Error + Send + Sync>> {
+        Ok(Arc::new(DefaultNetlinkSocket::new()?))
     }
 }
 
@@ -183,7 +188,7 @@ mod tests {
     #[tokio::test]
     async fn test_default_socket() -> Result<(), Box<dyn Error + Send + Sync>> {
         let factory = DefaultNetlinkSocketFactory::new();
-        let socket = factory.create_socket().await?;
+        let socket = factory.create_socket(Arc::new(LogOnlyNetlinkSocketListener::new())).await?;
         let link_message = netlink_packet_route::RtnlMessage::GetLink(netlink_packet_route::LinkMessage::default());
         let packet: netlink_packet_core::NetlinkMessage<netlink_packet_route::RtnlMessage> = build_default_packet(link_message);
         let messages = socket.send_message(packet).await?;
