@@ -15,6 +15,11 @@ pub struct NetlinkRustyRouterAddressResult {
     pub index: u64,
     pub address: rusty_router_model::IpAddress
 }
+impl NetlinkRustyRouterAddressResult {
+    pub fn get_index(&self) -> &u64 {
+        &self.index
+    }
+}
 
 #[derive(Debug)]
 pub struct NetlinkRustyRouterDeviceAddressesResult {

@@ -160,7 +160,7 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
         device.send("127.0.0.1".parse()?, "Got it".as_bytes().to_vec()).await?;
         tokio::time::sleep(std::time::Duration::from_millis(1)).await;
     }
-    tokio::time::sleep(std::time::Duration::from_millis(10000)).await;
+    tokio::time::sleep(std::time::Duration::from_millis(100000)).await;
 
     Ok(())
 }

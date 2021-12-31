@@ -2,6 +2,7 @@ use std::net::Ipv4Addr;
 use std::sync::Arc;
 use std::error::Error;
 use async_trait::async_trait;
+use interface::InterfaceManager;
 use netlink::LogOnlyNetlinkSocketListener;
 use std::collections::HashMap;
 
@@ -16,6 +17,7 @@ pub mod link;
 pub mod route;
 pub mod network;
 pub mod netlink;
+pub mod interface;
 
 pub struct LinuxRustyRouter {
     platform: Arc<LinuxRustyRouterPlatform>,
@@ -57,14 +59,17 @@ impl RustyRouterInstance for LinuxRustyRouterInstance {
 
 struct LinuxRustyRouterPlatform {
     network_poller: network::Poller,
+    _interface_manager: InterfaceManager,
     config: Arc<rusty_router_model::Router>,
     netlink_socket: Arc<dyn netlink::NetlinkSocket + Send + Sync>,
 }
 impl LinuxRustyRouterPlatform {
     pub async fn new(config: rusty_router_model::Router, netlink_socket_factory: Arc<dyn netlink::NetlinkSocketFactory + Send + Sync>) -> Result<LinuxRustyRouterPlatform, Box<dyn Error + Send + Sync>> {
+        let config = Arc::new(config);
         Ok(LinuxRustyRouterPlatform {
-            netlink_socket: netlink_socket_factory.create_socket(Arc::new(LogOnlyNetlinkSocketListener::new())).await?,
-            config: Arc::new(config),
+            netlink_socket: netlink_socket_factory.create_socket(Box::new(LogOnlyNetlinkSocketListener::new())).await?,
+            _interface_manager: InterfaceManager::new(config.clone(), netlink_socket_factory).await?,
+            config,
             network_poller: network::Poller::new()?,
         })
     }

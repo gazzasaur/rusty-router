@@ -21,8 +21,8 @@ impl NetlinkRustyRouterLinkStatus {
         NetlinkRustyRouterLinkStatus { index, name, state }
     }
 
-    pub fn get_index(&self) -> u64 {
-        self.index
+    pub fn get_index(&self) -> &u64 {
+        &self.index
     }
 
     pub fn get_name(&self) -> &String {

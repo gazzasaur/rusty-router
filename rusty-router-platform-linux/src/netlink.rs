@@ -29,7 +29,7 @@ pub trait NetlinkSocketListener {
 #[automock]
 #[async_trait]
 pub trait NetlinkSocketFactory {
-    async fn create_socket(&self, listener: Arc<dyn NetlinkSocketListener + Send + Sync>) -> std::result::Result<Arc<dyn NetlinkSocket + Send + Sync>, Box<dyn Error + Send + Sync>>;
+    async fn create_socket(&self, listener: Box<dyn NetlinkSocketListener + Send + Sync>) -> std::result::Result<Arc<dyn NetlinkSocket + Send + Sync>, Box<dyn Error + Send + Sync>>;
 }
 
 #[automock]
@@ -61,8 +61,8 @@ impl DefaultNetlinkSocketFactory {
 }
 #[async_trait]
 impl NetlinkSocketFactory for DefaultNetlinkSocketFactory {
-    async fn create_socket(&self, _listener: Arc<dyn NetlinkSocketListener + Send + Sync>) -> std::result::Result<Arc<dyn NetlinkSocket + Send + Sync>, Box<dyn Error + Send + Sync>> {
-        Ok(Arc::new(DefaultNetlinkSocket::new()?))
+    async fn create_socket(&self, listener: Box<dyn NetlinkSocketListener + Send + Sync>) -> std::result::Result<Arc<dyn NetlinkSocket + Send + Sync>, Box<dyn Error + Send + Sync>> {
+        Ok(Arc::new(DefaultNetlinkSocket::new(listener)?))
     }
 }
 
@@ -71,7 +71,7 @@ pub struct DefaultNetlinkSocket {
     socket: Arc<Mutex<netlink_sys::TokioSocket>>,
 }
 impl DefaultNetlinkSocket {
-    pub fn new() -> Result<DefaultNetlinkSocket, Box<dyn Error + Send + Sync>> {
+    pub fn new(listener: Box<dyn NetlinkSocketListener + Send + Sync>) -> Result<DefaultNetlinkSocket, Box<dyn Error + Send + Sync>> {
         let mut socket = netlink_sys::TokioSocket::new(protocols::NETLINK_ROUTE)?;
         socket.bind_auto()?;
         socket.connect(&netlink_sys::SocketAddr::new(0, 0))?;
@@ -83,7 +83,7 @@ impl DefaultNetlinkSocket {
         let running = Arc::new(AtomicBool::new(true));
         let task_running = running.clone();
         tokio::task::spawn(async move {
-            DefaultNetlinkSocket::recv_multicast_messages(task_running, Box::new(LogOnlyNetlinkSocketListener { }), Arc::new(Mutex::new(multicast_socket))).await;
+            DefaultNetlinkSocket::recv_multicast_messages(task_running, listener, Arc::new(Mutex::new(multicast_socket))).await;
         });
         Ok(DefaultNetlinkSocket { running, socket: Arc::new(Mutex::new(socket)) })
     }
@@ -188,7 +188,7 @@ mod tests {
     #[tokio::test]
     async fn test_default_socket() -> Result<(), Box<dyn Error + Send + Sync>> {
         let factory = DefaultNetlinkSocketFactory::new();
-        let socket = factory.create_socket(Arc::new(LogOnlyNetlinkSocketListener::new())).await?;
+        let socket = factory.create_socket(Box::new(LogOnlyNetlinkSocketListener::new())).await?;
         let link_message = netlink_packet_route::RtnlMessage::GetLink(netlink_packet_route::LinkMessage::default());
         let packet: netlink_packet_core::NetlinkMessage<netlink_packet_route::RtnlMessage> = build_default_packet(link_message);
         let messages = socket.send_message(packet).await?;

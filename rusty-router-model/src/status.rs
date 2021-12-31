@@ -1,7 +1,7 @@
 use std::fmt::{Display, Formatter};
 use serde::{Serialize, Deserialize};
 
-#[derive(Serialize, Deserialize, Debug, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Clone)]
 pub struct NetworkLinkStatus {
     device: String,
     name: Option<String>,
@@ -27,7 +27,7 @@ impl NetworkLinkStatus {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Clone)]
 pub struct NetworkInterfaceStatus {
     name: Option<String>,
     addresses: Vec<crate::config::IpAddress>,
