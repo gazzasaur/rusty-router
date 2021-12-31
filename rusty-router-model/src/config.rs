@@ -4,21 +4,21 @@ use serde::{Serialize, Deserialize};
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Router {
+    network_links: HashMap<String, NetworkLink>,
     network_interfaces: HashMap<String, NetworkInterface>,
-    router_interfaces: HashMap<String, RouterInterface>,
     vrfs: HashMap<String, Vrf>,
 }
 impl Router {
-    pub fn new(network_interfaces: HashMap<String, NetworkInterface>, router_interfaces: HashMap<String, RouterInterface>, vrfs: HashMap<String, Vrf>) -> Router {
-        Router { network_interfaces, router_interfaces, vrfs }
+    pub fn new(network_links: HashMap<String, NetworkLink>, network_interfaces: HashMap<String, NetworkInterface>, vrfs: HashMap<String, Vrf>) -> Router {
+        Router { network_links, network_interfaces, vrfs }
     }
 
-    pub fn get_network_interfaces(&self) -> &HashMap<String, NetworkInterface> {
+    pub fn get_network_interfaces(&self) -> &HashMap<String, NetworkLink> {
+        &self.network_links
+    }
+
+    pub fn get_router_interfaces(&self) -> &HashMap<String, NetworkInterface> {
         &self.network_interfaces
-    }
-
-    pub fn get_router_interfaces(&self) -> &HashMap<String, RouterInterface> {
-        &self.router_interfaces
     }
 
     pub fn get_vrfs(&self) -> &HashMap<String, Vrf> {
@@ -27,26 +27,26 @@ impl Router {
 }
 
 #[derive(Serialize, Deserialize, Debug)]
-pub struct NetworkInterface {
+pub struct NetworkLink {
     device: String,
-    network_interface_type: NetworkInterfaceType,
+    network_link_type: NetworkLinkType,
 }
-impl NetworkInterface {
-    pub fn new(device: String, network_interface_type: NetworkInterfaceType) -> NetworkInterface {
-        NetworkInterface { device, network_interface_type }
+impl NetworkLink {
+    pub fn new(device: String, network_link_type: NetworkLinkType) -> NetworkLink {
+        NetworkLink { device, network_link_type }
     }
 
     pub fn get_device(&self) -> &String {
         &self.device
     }
 
-    pub fn get_network_interface_type(&self) -> &NetworkInterfaceType {
-        &self.network_interface_type
+    pub fn get_network_link_type(&self) -> &NetworkLinkType {
+        &self.network_link_type
     }
 }
 
 #[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Hash)]
-pub enum NetworkInterfaceType {
+pub enum NetworkLinkType {
     GenericInterface,
 }
 
@@ -64,22 +64,22 @@ pub enum VrfTable {
 }
 
 #[derive(Serialize, Deserialize, Debug)]
-pub struct RouterInterface {
+pub struct NetworkInterface {
     vrf: Option<String>,
-    network_interface: String,
+    network_link: String,
     ip_addresses: Vec<IpAddress>,
 }
-impl RouterInterface {
-    pub fn new(vrf: Option<String>, network_interface: String, ip_addresses: Vec<IpAddress>) -> RouterInterface {
-        RouterInterface { vrf, network_interface, ip_addresses }
+impl NetworkInterface {
+    pub fn new(vrf: Option<String>, network_link: String, ip_addresses: Vec<IpAddress>) -> NetworkInterface {
+        NetworkInterface { vrf, network_link, ip_addresses }
     }
 
     pub fn get_vrf(&self) -> &Option<String> {
         &self.vrf
     }
 
-    pub fn get_network_interface(&self) -> &String {
-        &self.network_interface
+    pub fn get_network_link(&self) -> &String {
+        &self.network_link
     }
 
     pub fn get_ip_addresses(&self) -> &Vec<IpAddress> {
@@ -126,13 +126,13 @@ mod tests {
     #[test]
     fn it_parses_config() {
         let config = Router {
-            network_interfaces: HashMap::from_iter(vec![("red1".to_string(), NetworkInterface {
+            network_links: HashMap::from_iter(vec![("red1".to_string(), NetworkLink {
                 device: "eth0".to_string(),
-                network_interface_type: NetworkInterfaceType::GenericInterface,
+                network_link_type: NetworkLinkType::GenericInterface,
             })]),
-            router_interfaces: HashMap::from_iter(vec![("BlueInterface".to_string(), RouterInterface {
+            network_interfaces: HashMap::from_iter(vec![("BlueInterface".to_string(), NetworkInterface {
                 vrf: None,
-                network_interface: "lo".to_string(),
+                network_link: "lo".to_string(),
                 ip_addresses: vec![IpAddress(IpAddressType::IpV4, "192.168.0.1".to_string(), 32)],
             })]),
         vrfs: HashMap::from_iter(vec![("Blue".to_string(), Vrf {
@@ -145,6 +145,6 @@ mod tests {
                 priority: HashMap::from_iter(vec![(RouteSource::Static, 10)].drain(..)),
             })].drain(..)),
         };
-        assert_eq!("{\"network_interfaces\":{\"red1\":{\"device\":\"eth0\",\"network_interface_type\":\"GenericInterface\"}},\"router_interfaces\":{\"BlueInterface\":{\"vrf\":null,\"network_interface\":\"lo\",\"ip_addresses\":[[\"IpV4\",\"192.168.0.1\",32]]}},\"vrfs\":{\"Blue\":{\"table\":{\"VirtualTable\":10},\"static_routes\":[{\"prefix\":[\"IpV4\",\"172.0.0.0\",16],\"next_hop\":\"10.10.10.10\",\"metric\":100}],\"priority\":{\"Static\":10}}}}", serde_json::to_string(&config).unwrap());
+        assert_eq!("{\"network_links\":{\"red1\":{\"device\":\"eth0\",\"network_link_type\":\"GenericInterface\"}},\"network_interfaces\":{\"BlueInterface\":{\"vrf\":null,\"network_link\":\"lo\",\"ip_addresses\":[[\"IpV4\",\"192.168.0.1\",32]]}},\"vrfs\":{\"Blue\":{\"table\":{\"VirtualTable\":10},\"static_routes\":[{\"prefix\":[\"IpV4\",\"172.0.0.0\",16],\"next_hop\":\"10.10.10.10\",\"metric\":100}],\"priority\":{\"Static\":10}}}}", serde_json::to_string(&config).unwrap());
     }
 }

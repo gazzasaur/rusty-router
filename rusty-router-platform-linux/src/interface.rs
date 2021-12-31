@@ -140,7 +140,7 @@ impl InterfaceManagerWorker {
         for item in link_data {
             if let Some(interface) = process_link_message(item) {
                 let addresses = updated_addresses.remove(interface.get_index()).get_or_insert(vec![]).drain(..).map(|x| x.address).collect();
-                let network_interface_status = NetworkInterfaceStatus::new(None, addresses, NetworkLinkStatus::new(interface.get_name().clone(), None, interface.get_state().clone()));
+                let network_interface_status = NetworkInterfaceStatus::new(None, addresses, NetworkLinkStatus::new(None, interface.get_name().clone(), interface.get_state().clone()));
                 updated_items.entry(*interface.get_index()).and_modify(|existing| {
                     warn!("Duplicate entry found {} with a conflicting index {}.  Conflicts with {}.", interface.get_name(), interface.get_index(), existing.get_network_link_status().get_device());
                 }).or_insert(network_interface_status);
@@ -176,15 +176,15 @@ impl NetlinkSocketListener for InterfaceManagerNetlinkSocketListener {
         if let netlink_packet_core::NetlinkPayload::InnerMessage(netlink_packet_route::RtnlMessage::NewLink(_)) = message.payload {
             if let Some(link_data) = process_link_message(message) {
                 if let Some(item) = data.get_interface_status_item(link_data.get_index()) {
-                    let nls = NetworkLinkStatus::new(link_data.get_name().clone(), item.get_interface_status().get_network_link_status().get_name().clone(), rusty_router_model::NetworkLinkOperationalState::Down);
-                    let status = NetworkInterfaceStatus::new(item.get_interface_status().get_network_link_status().get_name().clone(), item.get_interface_status().get_addresses().clone(), nls);
+                    let nls = NetworkLinkStatus::new(None, link_data.get_name().clone(), rusty_router_model::NetworkLinkOperationalState::Down);
+                    let status = NetworkInterfaceStatus::new(None, item.get_interface_status().get_addresses().clone(), nls);
                     data.set_interface_status_item(*link_data.get_index(), NetworkInterfaceStatusItem::new(status));
                 }
             }
         } else if let netlink_packet_core::NetlinkPayload::InnerMessage(netlink_packet_route::RtnlMessage::NewAddress(_)) = message.payload {
             if let Some(address_data) = process_address_message(message) {
                 if let Some(item) = data.get_interface_status_item(address_data.get_index()) {
-                    let nls = NetworkLinkStatus::new(item.get_interface_status().get_network_link_status().get_device().clone(), item.get_interface_status().get_network_link_status().get_name().clone(), rusty_router_model::NetworkLinkOperationalState::Down);
+                    let nls = NetworkLinkStatus::new(None, item.get_interface_status().get_network_link_status().get_device().clone(), rusty_router_model::NetworkLinkOperationalState::Down);
                     let status = NetworkInterfaceStatus::new(item.get_interface_status().get_network_link_status().get_name().clone(), item.get_interface_status().get_addresses().clone(), nls);
                     data.set_interface_status_item(*address_data.get_index(), NetworkInterfaceStatusItem::new(status));
                 }
@@ -192,7 +192,7 @@ impl NetlinkSocketListener for InterfaceManagerNetlinkSocketListener {
         } else if let netlink_packet_core::NetlinkPayload::InnerMessage(netlink_packet_route::RtnlMessage::DelAddress(_)) = message.payload {
             if let Some(address_data) = process_address_message(message) {
                 if let Some(item) = data.get_interface_status_item(address_data.get_index()) {
-                    let nls = NetworkLinkStatus::new(item.get_interface_status().get_network_link_status().get_device().clone(), item.get_interface_status().get_network_link_status().get_name().clone(), rusty_router_model::NetworkLinkOperationalState::Down);
+                    let nls = NetworkLinkStatus::new(None, item.get_interface_status().get_network_link_status().get_device().clone(), rusty_router_model::NetworkLinkOperationalState::Down);
                     let status = NetworkInterfaceStatus::new(item.get_interface_status().get_network_link_status().get_name().clone(), item.get_interface_status().get_addresses().clone(), nls);
                     data.set_interface_status_item(*address_data.get_index(), NetworkInterfaceStatusItem::new(status));
                 }

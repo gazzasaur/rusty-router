@@ -45,32 +45,32 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
     }
 
     let config = rusty_router_model::Router::new(
-        vec![("iface0".to_string(), rusty_router_model::NetworkInterface::new(
+        vec![("iface0".to_string(), rusty_router_model::NetworkLink::new(
             "eth0".to_string(),
-            rusty_router_model::NetworkInterfaceType::GenericInterface,
-        )), ("iface1".to_string(), rusty_router_model::NetworkInterface::new(
+            rusty_router_model::NetworkLinkType::GenericInterface,
+        )), ("iface1".to_string(), rusty_router_model::NetworkLink::new(
             "eth1".to_string(),
-            rusty_router_model::NetworkInterfaceType::GenericInterface,
-        )), ("iface2".to_string(), rusty_router_model::NetworkInterface::new(
+            rusty_router_model::NetworkLinkType::GenericInterface,
+        )), ("iface2".to_string(), rusty_router_model::NetworkLink::new(
             "dummy0".to_string(),
-            rusty_router_model::NetworkInterfaceType::GenericInterface,
-        )), ("iface3".to_string(), rusty_router_model::NetworkInterface::new(
+            rusty_router_model::NetworkLinkType::GenericInterface,
+        )), ("iface3".to_string(), rusty_router_model::NetworkLink::new(
             "lo".to_string(),
-            rusty_router_model::NetworkInterfaceType::GenericInterface,
+            rusty_router_model::NetworkLinkType::GenericInterface,
         ))].into_iter().collect(),
-        vec![("Inside".to_string(), rusty_router_model::RouterInterface::new(
+        vec![("Inside".to_string(), rusty_router_model::NetworkInterface::new(
             None,
             "iface0".to_string(),
             vec![],
-        )), ("Outside".to_string(), rusty_router_model::RouterInterface::new(
+        )), ("Outside".to_string(), rusty_router_model::NetworkInterface::new(
             None,
             "iface1".to_string(),
             vec![],
-        )), ("Unused".to_string(), rusty_router_model::RouterInterface::new(
+        )), ("Unused".to_string(), rusty_router_model::NetworkInterface::new(
             None,
             "doesnotexist".to_string(),
             vec![],
-        )), ("Loopback".to_string(), rusty_router_model::RouterInterface::new(
+        )), ("Loopback".to_string(), rusty_router_model::NetworkInterface::new(
             None,
             "iface3".to_string(),
             vec![],

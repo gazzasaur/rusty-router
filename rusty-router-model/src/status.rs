@@ -3,12 +3,12 @@ use serde::{Serialize, Deserialize};
 
 #[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Clone)]
 pub struct NetworkLinkStatus {
-    device: String,
     name: Option<String>,
+    device: String,
     operational_state: NetworkLinkOperationalState,
 }
 impl NetworkLinkStatus {
-    pub fn new(device: String, name: Option<String>, operational_state: NetworkLinkOperationalState) -> NetworkLinkStatus {
+    pub fn new(name: Option<String>, device: String, operational_state: NetworkLinkOperationalState) -> NetworkLinkStatus {
         NetworkLinkStatus {
             name, device, operational_state,
         }
