@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::net::{Ipv4Addr, Ipv6Addr};
 use std::ops::Add;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -12,12 +12,10 @@ use rusty_router_model::{NetworkInterfaceStatus, NetworkLinkStatus};
 use tokio::sync::RwLock;
 use tokio::time::Instant;
 
-use crate::link::NetlinkRustyRouterLinkStatus;
 use crate::netlink::NetlinkSocket;
 use crate::netlink::NetlinkSocketFactory;
 use crate::netlink::NetlinkSocketListener;
 use crate::netlink::build_default_packet;
-use crate::route::NetlinkRustyRouterAddressResult;
 
 /**
  * Two mechanisms exist to maintain a list of network interface information.
@@ -30,19 +28,20 @@ pub struct InterfaceManager {
 }
 impl InterfaceManager {
     pub async fn new(config: Arc<rusty_router_model::Router>, netlink_socket_factory: Arc<dyn NetlinkSocketFactory + Send + Sync>) -> Result<InterfaceManager, Box<dyn Error + Send + Sync>> {
+        let netlink_message_processor = Arc::new(NetlinkMessageProcessor::new(config));
         let data = Arc::new(RwLock::new(InterfaceManagerData::new()));
-        let netlink_socket = netlink_socket_factory.create_socket(Box::new(InterfaceManagerNetlinkSocketListener::new(config.clone(), data.clone()))).await?;
+        let netlink_socket = netlink_socket_factory.create_socket(Box::new(InterfaceManagerNetlinkSocketListener::new(netlink_message_processor.clone(), data.clone()))).await?;
         let running = Arc::new(AtomicBool::new(true));
-        InterfaceManagerWorker::start(config, running.clone(), netlink_socket.clone(), data.clone()).await;
+        InterfaceManagerWorker::start(netlink_message_processor, running.clone(), netlink_socket.clone(), data.clone()).await;
         Ok(InterfaceManager { running, data })
     }
 
-    pub async fn get_data(&self, name: &String) -> Option<NetworkInterfaceStatus> {
-        let data = self.data.read().await;
-        if let Some(item) = data.fetch_interface_status(name) {
-            return Some(item.clone());
-        }
-        None
+    pub async fn list_network_links(&self) -> Vec<NetworkLinkStatus> {
+        self.data.read().await.list_link_status()
+    }
+
+    pub async fn list_network_interfaces(&self) -> Vec<NetworkInterfaceStatus> {
+        self.data.read().await.list_interface_status()
     }
 }
 impl Drop for InterfaceManager {
@@ -52,55 +51,81 @@ impl Drop for InterfaceManager {
 }
 
 struct InterfaceManagerData {
-    items: HashMap<u64, NetworkInterfaceStatusItem>,
+    network_links: HashMap<u64, Arc<NetworkStatusItem<NetworkLinkStatus>>>,
+    _network_link_map: HashMap<String, Arc<NetworkStatusItem<NetworkLinkStatus>>>,
+    network_interfaces: HashMap<u64, Arc<NetworkStatusItem<NetworkInterfaceStatus>>>,
+    _network_interface_map: HashMap<String, Arc<NetworkStatusItem<NetworkInterfaceStatus>>>,
 }
 impl InterfaceManagerData {
     pub fn new() -> InterfaceManagerData {
-        InterfaceManagerData { items: HashMap::new() }
+        InterfaceManagerData { network_links: HashMap::new(), _network_link_map: HashMap::new(), network_interfaces: HashMap::new(), _network_interface_map: HashMap::new() }
     }
 
-    pub fn get_interface_status_item(&mut self, index: &u64) -> Option<&NetworkInterfaceStatusItem> {
-        self.items.get(index)
+    pub fn list_link_status(&self) -> Vec<NetworkLinkStatus> {
+        self.network_links.iter().map(|(_, value)| value.get_status().clone()).collect()
     }
 
-    pub fn set_interface_status_item(&mut self, index: u64, interface: NetworkInterfaceStatusItem) {
-        self.items.insert(index, interface);
+    pub fn take_link_status_items(&mut self) -> HashMap<u64, Arc<NetworkStatusItem<NetworkLinkStatus>>> {
+        self.network_links.drain().collect()
     }
 
-    pub fn fetch_interface_status(&self, name: &String) -> Option<NetworkInterfaceStatus> {
-        for item in self.items.values() {
-            if item.get_interface_status().get_name() == &Some(name.clone()) {
-                return Some(item.get_interface_status().clone());
-            }
-        }
-        None
+    pub fn get_link_status_item(&mut self, index: &u64) -> Option<&Arc<NetworkStatusItem<NetworkLinkStatus>>> {
+        self.network_links.get(index)
+    }
+
+    pub fn set_link_status_item(&mut self, index: u64, link: Arc<NetworkStatusItem<NetworkLinkStatus>>) {
+        link.get_status().get_name().iter().for_each(|name| {
+            self._network_link_map.insert(name.clone(), link.clone());
+        });
+        self.network_links.insert(index, link);
+    }
+
+    pub fn list_interface_status(&self) -> Vec<NetworkInterfaceStatus> {
+        self.network_interfaces.iter().map(|(_, value)| value.get_status().clone()).collect()
+    }
+
+    pub fn take_interface_status_items(&mut self) -> HashMap<u64, Arc<NetworkStatusItem<NetworkInterfaceStatus>>> {
+        self.network_interfaces.drain().collect()
+    }
+
+    pub fn get_interface_status_item(&mut self, index: &u64) -> Option<&Arc<NetworkStatusItem<NetworkInterfaceStatus>>> {
+        self.network_interfaces.get(index)
+    }
+
+    pub fn set_linterface_status_item(&mut self, index: u64, interface: NetworkStatusItem<NetworkInterfaceStatus>) {
+        let interface = Arc::new(interface);
+        interface.get_status().get_name().iter().for_each(|name| {
+            self._network_interface_map.insert(name.clone(), interface.clone());
+        });
+        self.network_interfaces.insert(index, interface);
     }
 }
 
-struct NetworkInterfaceStatusItem {
+#[derive(Debug)]
+struct NetworkStatusItem<T> {
     refreshed: Instant,
-    interface_status: NetworkInterfaceStatus,
+    status: T,
 }
-impl NetworkInterfaceStatusItem {
-    pub fn new(interface_status: NetworkInterfaceStatus) -> NetworkInterfaceStatusItem {
-        NetworkInterfaceStatusItem { refreshed: Instant::now(), interface_status }
+impl<T> NetworkStatusItem<T> {
+    pub fn new(status: T) -> NetworkStatusItem<T> {
+        NetworkStatusItem { refreshed: Instant::now(), status }
     }
 
     pub fn get_refreshed(&self) -> &Instant {
         &self.refreshed
     }
 
-    pub fn get_interface_status(&self) -> &NetworkInterfaceStatus {
-        &self.interface_status
+    pub fn get_status(&self) -> &T {
+        &self.status
     }
 }
 
 struct InterfaceManagerWorker {
-    _config: Arc<rusty_router_model::Router>,
+    netlink_message_processor: Arc<NetlinkMessageProcessor>,
 }
 impl InterfaceManagerWorker {
-    pub async fn start(config: Arc<rusty_router_model::Router>, running: Arc<AtomicBool>, netlink_socket: Arc<dyn NetlinkSocket + Send + Sync>, data: Arc<RwLock<InterfaceManagerData>>) {
-        let worker = InterfaceManagerWorker { _config: config };
+    pub async fn start(netlink_message_processor: Arc<NetlinkMessageProcessor>, running: Arc<AtomicBool>, netlink_socket: Arc<dyn NetlinkSocket + Send + Sync>, data: Arc<RwLock<InterfaceManagerData>>) {
+        let worker = InterfaceManagerWorker { netlink_message_processor };
 
         worker.poll(&netlink_socket, &data).await;
         tokio::task::spawn(async move {
@@ -125,144 +150,203 @@ impl InterfaceManagerWorker {
     async fn try_poll(&self, netlink_socket: &Arc<dyn NetlinkSocket + Send + Sync>, data: &Arc<RwLock<InterfaceManagerData>>) -> Result<(), Box<dyn Error + Send + Sync>> {
         let link_message = netlink_packet_route::RtnlMessage::GetLink(netlink_packet_route::LinkMessage::default());
         let address_message = netlink_packet_route::RtnlMessage::GetAddress(netlink_packet_route::AddressMessage::default());
-        let link_data = netlink_socket.send_message(build_default_packet(link_message)).await?;
+        let mut link_data = netlink_socket.send_message(build_default_packet(link_message)).await?;
         let mut network_data = netlink_socket.send_message(build_default_packet(address_message)).await?;
 
-        let mut updated_addresses: HashMap<u64, Vec<NetlinkRustyRouterAddressResult>> = HashMap::new();
-        network_data.drain(..).for_each(|item| {
-            if let Some(address_item) = process_address_message(item) {
-                let addresses = updated_addresses.entry(*address_item.get_index()).or_insert(vec![]);
-                addresses.push(address_item);
+        let mut mapped_links: HashMap<String, u64> = HashMap::new();
+        let mut unmapped_links: HashSet<String> = self.netlink_message_processor.get_config().get_network_links().iter().map(|(name, _)| name.clone()).collect();
+        let mut unmapped_devices: HashMap<String, String> = self.netlink_message_processor.get_config().get_network_links().iter().map(|(name, value)| (value.get_device().clone(), name.clone())).collect();
+        let mut mapped_interfaces: HashMap<String, String> = self.netlink_message_processor.get_config().get_network_interfaces().iter().map(|(name, interface)| (interface.get_network_link().clone(), name.clone())).collect();
+
+        let mut network_links: HashMap<u64, NetworkLinkStatus> = HashMap::new();
+        link_data.drain(..).for_each(|response| {
+            if let Some((index, network_link)) = self.netlink_message_processor.process_link_message(response) {
+                network_link.get_name().iter().for_each(|name| {
+                    unmapped_links.remove(name);
+                    mapped_links.insert(name.clone(), index);
+                });
+                unmapped_devices.remove(network_link.get_device());
+                network_links.insert(index, network_link);
+            };
+        });
+
+        let mut network_addresses: HashMap<u64, Vec<rusty_router_model::IpAddress>> = HashMap::new();
+        network_data.drain(..).for_each(|response| {
+            if let Some((index, address)) = self.netlink_message_processor.process_address_message(response) {
+                let addresses = network_addresses.entry(index).or_insert(vec![]);
+                addresses.push(address);
             }
         });
 
-        let mut updated_items: HashMap<u64, NetworkInterfaceStatus> = HashMap::new();
-        for item in link_data {
-            if let Some(interface) = process_link_message(item) {
-                let addresses = updated_addresses.remove(interface.get_index()).get_or_insert(vec![]).drain(..).map(|x| x.address).collect();
-                let network_interface_status = NetworkInterfaceStatus::new(None, addresses, NetworkLinkStatus::new(None, interface.get_name().clone(), interface.get_state().clone()));
-                updated_items.entry(*interface.get_index()).and_modify(|existing| {
-                    warn!("Duplicate entry found {} with a conflicting index {}.  Conflicts with {}.", interface.get_name(), interface.get_index(), existing.get_network_link_status().get_device());
-                }).or_insert(network_interface_status);
+        let mut network_interfaces: HashMap<String, NetworkInterfaceStatus> = HashMap::new();
+        for (network_interface_name, network_interface) in self.netlink_message_processor.get_config().get_network_interfaces() {
+            if let Some(index) = mapped_links.get(network_interface.get_network_link()) {
+                let network_link = match network_links.get(index) {
+                    Some(network_link) => network_link.clone(),
+                    None => continue,
+                };
+                let interface_addresses = network_addresses.remove(index).map_or_else(|| Vec::new(), |addresses| addresses);
+                network_interfaces.insert(network_interface_name.clone(), NetworkInterfaceStatus::new(Some(network_interface_name.clone()), interface_addresses, network_link));
+            } else {
+                if let Some(network_link) = self.netlink_message_processor.get_config().get_network_links().get(network_interface.get_network_link()) {
+                    network_interfaces.insert(network_interface_name.clone(), NetworkInterfaceStatus::new(Some(network_interface_name.clone()), Vec::new(), NetworkLinkStatus::new(Some(network_interface.get_network_link().clone()), network_link.get_device().clone(), rusty_router_model::NetworkLinkOperationalState::NotFound)));
+                } else {
+                    warn!("Could not match network interface '{}' to a network link '{}'.  Please check the router configuration.", network_interface_name, network_interface.get_network_link());
+                }
             }
         }
 
         let mut data = data.write().await;
-        for (index, item) in updated_items.drain() {
-            if let Some(interface) = data.get_interface_status_item(&index) {
-                if interface.get_refreshed().add(Duration::from_secs(10)) < Instant::now() {
-                    data.set_interface_status_item(index, NetworkInterfaceStatusItem::new(item));
-                }
+        let mut existing_links = data.take_link_status_items();
+        let mut existing_interfaces = data.take_interface_status_items();
+
+        let mut notify_links = Vec::new();
+        let mut notify_deleted_links = Vec::new();
+
+        network_links.drain().for_each(|(index, link)| {
+            let link = Arc::new(NetworkStatusItem::new(link));
+            match existing_links.remove(&index) {
+                Some(existing_link) =>  {
+                    if existing_link.get_refreshed().add(Duration::from_secs(10)) < Instant::now() && existing_link.get_status() != link.get_status() {
+                        data.set_link_status_item(index, link.clone());
+                        notify_links.push(link);
+                    } else {
+                        data.set_link_status_item(index, link);
+                    };    
+                },
+                None => {
+                    data.set_link_status_item(index, link.clone());
+                    notify_links.push(link);
+                },
             }
-        }
+        });
+        existing_links.drain().for_each(|(_, link)| notify_deleted_links.push(link));
+
+        println!("Links: {:?}", notify_links);
+        println!("Deleted Links: {:?}", notify_deleted_links);
 
         Ok(())
     }
 }
 
 struct InterfaceManagerNetlinkSocketListener {
-    _config: Arc<rusty_router_model::Router>,
+    netlink_message_processor: Arc<NetlinkMessageProcessor>,
     data: Arc<RwLock<InterfaceManagerData>>,
 }
 impl InterfaceManagerNetlinkSocketListener {
-    pub fn new(config: Arc<rusty_router_model::Router>, data: Arc<RwLock<InterfaceManagerData>>) -> InterfaceManagerNetlinkSocketListener {
-        InterfaceManagerNetlinkSocketListener { _config: config, data }
+    pub fn new(netlink_message_processor: Arc<NetlinkMessageProcessor>, data: Arc<RwLock<InterfaceManagerData>>) -> InterfaceManagerNetlinkSocketListener {
+        InterfaceManagerNetlinkSocketListener { netlink_message_processor, data }
     }
 }
 #[async_trait]
 impl NetlinkSocketListener for InterfaceManagerNetlinkSocketListener {
     async fn message_received(&self, message: netlink_packet_core::NetlinkMessage<netlink_packet_route::RtnlMessage>) {
-        let mut data = self.data.write().await;
-        if let netlink_packet_core::NetlinkPayload::InnerMessage(netlink_packet_route::RtnlMessage::NewLink(_)) = message.payload {
-            if let Some(link_data) = process_link_message(message) {
-                if let Some(item) = data.get_interface_status_item(link_data.get_index()) {
-                    let nls = NetworkLinkStatus::new(None, link_data.get_name().clone(), rusty_router_model::NetworkLinkOperationalState::Down);
-                    let status = NetworkInterfaceStatus::new(None, item.get_interface_status().get_addresses().clone(), nls);
-                    data.set_interface_status_item(*link_data.get_index(), NetworkInterfaceStatusItem::new(status));
-                }
-            }
-        } else if let netlink_packet_core::NetlinkPayload::InnerMessage(netlink_packet_route::RtnlMessage::NewAddress(_)) = message.payload {
-            if let Some(address_data) = process_address_message(message) {
-                if let Some(item) = data.get_interface_status_item(address_data.get_index()) {
-                    let nls = NetworkLinkStatus::new(None, item.get_interface_status().get_network_link_status().get_device().clone(), rusty_router_model::NetworkLinkOperationalState::Down);
-                    let status = NetworkInterfaceStatus::new(item.get_interface_status().get_network_link_status().get_name().clone(), item.get_interface_status().get_addresses().clone(), nls);
-                    data.set_interface_status_item(*address_data.get_index(), NetworkInterfaceStatusItem::new(status));
-                }
-            }
-        } else if let netlink_packet_core::NetlinkPayload::InnerMessage(netlink_packet_route::RtnlMessage::DelAddress(_)) = message.payload {
-            if let Some(address_data) = process_address_message(message) {
-                if let Some(item) = data.get_interface_status_item(address_data.get_index()) {
-                    let nls = NetworkLinkStatus::new(None, item.get_interface_status().get_network_link_status().get_device().clone(), rusty_router_model::NetworkLinkOperationalState::Down);
-                    let status = NetworkInterfaceStatus::new(item.get_interface_status().get_network_link_status().get_name().clone(), item.get_interface_status().get_addresses().clone(), nls);
-                    data.set_interface_status_item(*address_data.get_index(), NetworkInterfaceStatusItem::new(status));
-                }
-            }
-        }
+        // let mut data = self.data.write().await;
+        // if let netlink_packet_core::NetlinkPayload::InnerMessage(netlink_packet_route::RtnlMessage::NewLink(_)) = message.payload {
+        //     if let Some(link_data) = self.netlink_message_processor.process_link_message(message) {
+        //         if let Some(item) = data.get_interface_status_item(link_data.get_index()) {
+        //             let nls = NetworkLinkStatus::new(None, link_data.get_name().clone(), rusty_router_model::NetworkLinkOperationalState::Down);
+        //             let status = NetworkInterfaceStatus::new(None, item.get_interface_status().get_addresses().clone(), nls);
+        //             data.set_interface_status_item(*link_data.get_index(), NetworkInterfaceStatusItem::new(status));
+        //         }
+        //     }
+        // } else if let netlink_packet_core::NetlinkPayload::InnerMessage(netlink_packet_route::RtnlMessage::NewAddress(_)) = message.payload {
+        //     if let Some(address_data) = process_address_message(message) {
+        //         if let Some(item) = data.get_interface_status_item(address_data.get_index()) {
+        //             let nls = NetworkLinkStatus::new(None, item.get_interface_status().get_network_link_status().get_device().clone(), rusty_router_model::NetworkLinkOperationalState::Down);
+        //             let status = NetworkInterfaceStatus::new(item.get_interface_status().get_network_link_status().get_name().clone(), item.get_interface_status().get_addresses().clone(), nls);
+        //             data.set_interface_status_item(*address_data.get_index(), NetworkInterfaceStatusItem::new(status));
+        //         }
+        //     }
+        // } else if let netlink_packet_core::NetlinkPayload::InnerMessage(netlink_packet_route::RtnlMessage::DelAddress(_)) = message.payload {
+        //     if let Some(address_data) = process_address_message(message) {
+        //         if let Some(item) = data.get_interface_status_item(address_data.get_index()) {
+        //             let nls = NetworkLinkStatus::new(None, item.get_interface_status().get_network_link_status().get_device().clone(), rusty_router_model::NetworkLinkOperationalState::Down);
+        //             let status = NetworkInterfaceStatus::new(item.get_interface_status().get_network_link_status().get_name().clone(), item.get_interface_status().get_addresses().clone(), nls);
+        //             data.set_interface_status_item(*address_data.get_index(), NetworkInterfaceStatusItem::new(status));
+        //         }
+        //     }
+        // }
     }
 }
 
-fn process_link_message(message: netlink_packet_core::NetlinkMessage<netlink_packet_route::RtnlMessage>) -> Option<NetlinkRustyRouterLinkStatus> {
-    let mut index: Option<u64> = None;
-    let mut name: Option<String> = None;
-    let mut state = rusty_router_model::NetworkLinkOperationalState::Unknown;
-
-    if let netlink_packet_core::NetlinkPayload::InnerMessage(netlink_packet_route::RtnlMessage::NewLink(msg)) = message.payload {
-        index = Some(msg.header.index as u64);
-        for attribute in msg.nlas.iter() {
-            if let nlas::Nla::IfName(ifname) = attribute {
-                name = Some(ifname.clone())
-            } else if let nlas::Nla::OperState(operational_state) = attribute {
-                state = match operational_state {
-                    nlas::State::Up => rusty_router_model::NetworkLinkOperationalState::Up,
-                    nlas::State::Down => rusty_router_model::NetworkLinkOperationalState::Down,
-                    _ => rusty_router_model::NetworkLinkOperationalState::Unknown,
-                }
-            }
-        }
-    } else {
-        warn!("Netlink data does not contain a payload: {:?}", message)
-    }
-
-    index.and_then(|index| name.and_then(|name| Some(NetlinkRustyRouterLinkStatus::new(index, name, state))))
+struct NetlinkMessageProcessor {
+    config: Arc<rusty_router_model::Router>,
+    device_links: HashMap<String, String>,
 }
-
-fn process_address_message(message: netlink_packet_core::NetlinkMessage<netlink_packet_route::RtnlMessage>) -> Option<NetlinkRustyRouterAddressResult> {
-    let mut index: Option<u64> = None;
-    let mut prefix: Option<u64> = None;
-    let mut address: Option<String> = None;
-    let mut family: Option<rusty_router_model::IpAddressType> = None;
-
-    if let netlink_packet_core::NetlinkPayload::InnerMessage(netlink_packet_route::RtnlMessage::NewAddress(msg)) = message.payload {
-        index = Some(msg.header.index as u64);
-        prefix = Some(msg.header.prefix_len as u64);
-
-        if msg.header.family as u16 == netlink_packet_route::AF_INET {
-            for attribute in msg.nlas.iter() {
-                if let netlink_packet_route::address::nlas::Nla::Address(data) = attribute {
-                    if data.len() == 4 {
-                        family = Some(rusty_router_model::IpAddressType::IpV4);
-                        address = Some(Ipv4Addr::from([data[0], data[1], data[2], data[3]]).to_string());
-                    }
-                }
-            }
-        }
-        if msg.header.family as u16 == netlink_packet_route::AF_INET6 {
-            for attribute in msg.nlas.iter() {
-                if let netlink_packet_route::address::nlas::Nla::Address(data) = attribute {
-                    if data.len() == 16 {
-                        family = Some(rusty_router_model::IpAddressType::IpV6);
-                        address = Some(Ipv6Addr::from([data[0], data[1], data[2], data[3], data[4], data[5], data[6], data[7], data[8], data[9], data[10], data[11], data[12], data[13], data[14], data[15]]).to_string())
-                    }
-                }
-            }
-        }
-    } else {
-        warn!("Netlink data does not contain a payload: {:?}", message)
+impl NetlinkMessageProcessor {
+    pub fn new(config: Arc<rusty_router_model::Router>) -> NetlinkMessageProcessor {
+        let device_links = config.get_network_links().iter().map(|(name, link)| (link.get_device().clone(), name.clone())).collect();
+        NetlinkMessageProcessor { config, device_links }
     }
 
-    family.and_then(|family| address.and_then(|address| prefix.and_then(|prefix| index.and_then(|index| Some(NetlinkRustyRouterAddressResult{ index, address: rusty_router_model::IpAddress (
-        family, address, prefix
-    )})))))
+    pub fn get_config(&self) -> &Arc<rusty_router_model::Router> {
+        &self.config
+    }
+
+    fn process_link_message(&self, message: netlink_packet_core::NetlinkMessage<netlink_packet_route::RtnlMessage>) -> Option<(u64, NetworkLinkStatus)> {
+        let mut index: Option<u64> = None;
+        let mut device: Option<String> = None;
+        let mut state = rusty_router_model::NetworkLinkOperationalState::Unknown;
+    
+        if let netlink_packet_core::NetlinkPayload::InnerMessage(netlink_packet_route::RtnlMessage::NewLink(msg)) = message.payload {
+            index = Some(msg.header.index as u64);
+            for attribute in msg.nlas.iter() {
+                if let nlas::Nla::IfName(ifname) = attribute {
+                    device = Some(ifname.clone())
+                } else if let nlas::Nla::OperState(operational_state) = attribute {
+                    state = match operational_state {
+                        nlas::State::Up => rusty_router_model::NetworkLinkOperationalState::Up,
+                        nlas::State::Down => rusty_router_model::NetworkLinkOperationalState::Down,
+                        _ => rusty_router_model::NetworkLinkOperationalState::Unknown,
+                    }
+                }
+            }
+        } else {
+            warn!("Netlink data does not contain a payload: {:?}", message)
+        }
+
+        index.and_then(|index| device.and_then(|device| Some((index, NetworkLinkStatus::new(self.device_links.get(&device).map(|x| x.clone()), device, state)))))
+    }
+
+    fn process_address_message(&self, message: netlink_packet_core::NetlinkMessage<netlink_packet_route::RtnlMessage>) -> Option<(u64, rusty_router_model::IpAddress)> {
+        let mut index: Option<u64> = None;
+        let mut prefix: Option<u64> = None;
+        let mut address: Option<String> = None;
+        let mut family: Option<rusty_router_model::IpAddressType> = None;
+    
+        if let netlink_packet_core::NetlinkPayload::InnerMessage(netlink_packet_route::RtnlMessage::NewAddress(msg)) = message.payload {
+            index = Some(msg.header.index as u64);
+            prefix = Some(msg.header.prefix_len as u64);
+    
+            if msg.header.family as u16 == netlink_packet_route::AF_INET {
+                for attribute in msg.nlas.iter() {
+                    if let netlink_packet_route::address::nlas::Nla::Address(data) = attribute {
+                        if data.len() == 4 {
+                            family = Some(rusty_router_model::IpAddressType::IpV4);
+                            address = Some(Ipv4Addr::from([data[0], data[1], data[2], data[3]]).to_string());
+                        }
+                    }
+                }
+            }
+            if msg.header.family as u16 == netlink_packet_route::AF_INET6 {
+                for attribute in msg.nlas.iter() {
+                    if let netlink_packet_route::address::nlas::Nla::Address(data) = attribute {
+                        if data.len() == 16 {
+                            family = Some(rusty_router_model::IpAddressType::IpV6);
+                            address = Some(Ipv6Addr::from([data[0], data[1], data[2], data[3], data[4], data[5], data[6], data[7], data[8], data[9], data[10], data[11], data[12], data[13], data[14], data[15]]).to_string())
+                        }
+                    }
+                }
+            }
+        } else {
+            warn!("Netlink data does not contain a payload: {:?}", message)
+        }
+    
+        family.and_then(|family| address.and_then(|address| prefix.and_then(|prefix| index.and_then(|index| Some((index, rusty_router_model::IpAddress (
+            family, address, prefix
+        )))))))
+    }
 }
 
 #[cfg(test)]

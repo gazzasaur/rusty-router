@@ -14,12 +14,12 @@ impl NetworkLinkStatus {
         }
     }
 
-    pub fn get_device(&self) -> &String {
-        &self.device
-    }
-
     pub fn get_name(&self) -> &Option<String> {
         &self.name
+    }
+
+    pub fn get_device(&self) -> &String {
+        &self.device
     }
 
     pub fn get_operational_state(&self) -> &NetworkLinkOperationalState {

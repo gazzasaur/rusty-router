@@ -13,11 +13,11 @@ impl Router {
         Router { network_links, network_interfaces, vrfs }
     }
 
-    pub fn get_network_interfaces(&self) -> &HashMap<String, NetworkLink> {
+    pub fn get_network_links(&self) -> &HashMap<String, NetworkLink> {
         &self.network_links
     }
 
-    pub fn get_router_interfaces(&self) -> &HashMap<String, NetworkInterface> {
+    pub fn get_network_interfaces(&self) -> &HashMap<String, NetworkInterface> {
         &self.network_interfaces
     }
 
