@@ -93,7 +93,7 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
         });
 
         println!("================================================================================");
-        println!("Mapped Interfaces");
+        println!("Mapped Link");
         println!("================================================================================");
         interfaces.iter().for_each(|interface| {
             if let Some(name) = interface.get_name() {
@@ -132,22 +132,22 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
         println!("================================================================================");
         println!("Missing Network Interfaces");
         println!("================================================================================");
-        addresses.iter().for_each(|address| {
-            if address.get_network_link_status().get_operational_state() == &rusty_router_model::NetworkLinkOperationalState::NotFound {
-                if let Some(name) = address.get_name() {
-                    println!("{} ({})", name, address.get_network_link_status().get_device());
+        addresses.iter().for_each(|interface| {
+            if interface.get_network_link_status().get_operational_state() == &rusty_router_model::NetworkLinkOperationalState::NotFound {
+                if let Some(name) = interface.get_name() {
+                    println!("{} ({})", name, interface.get_network_link_status().get_device());
                 }
             }
         });
         println!();
 
         println!("================================================================================");
-        println!("Unmapped Device");
+        println!("Unmapped Interface");
         println!("================================================================================");
-        addresses.iter().for_each(|address| {
-            if address.get_name().is_none() {
-                println!("{}", address.get_network_link_status().get_device());
-                for addr in address.get_addresses() {
+        addresses.iter().for_each(|interface| {
+            if interface.get_name().is_none() {
+                println!("{}", interface.get_network_link_status().get_device());
+                for addr in interface.get_addresses() {
                     println!("\t{}", addr);
                 }
             }
