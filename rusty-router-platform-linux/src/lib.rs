@@ -9,7 +9,6 @@ use rusty_router_model::RustyRouterInstance;
 
 use crate::network::LinuxInetPacketNetworkInterface;
 
-pub mod link;
 pub mod route;
 pub mod network;
 pub mod netlink;
