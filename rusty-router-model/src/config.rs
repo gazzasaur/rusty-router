@@ -99,7 +99,8 @@ pub struct StaticRoute {
     metric: u64,
 }
 
-#[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Clone)]
+// TODO Use std IpAddress
+#[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Clone, PartialOrd, Ord)]
 pub struct IpAddress (pub IpAddressType, pub String, pub u64);
 impl IpAddress {
     pub fn new(family: IpAddressType, address: String, prefix: u64) -> IpAddress {
@@ -112,7 +113,7 @@ impl Display for IpAddress {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Clone)]
+#[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Clone, PartialOrd, Ord)]
 pub enum IpAddressType {
     IpV4,
     IpV6,

@@ -4,7 +4,7 @@ use std::error::Error;
 use async_trait::async_trait;
 use interface::InterfaceManager;
 
-use rusty_router_model::{self, InetPacketNetworkInterface, NetworkEventHandler, NetworkInterfaceStatus, RustyRouter};
+use rusty_router_model::{InetPacketNetworkInterface, NetworkEventHandler, NetworkInterfaceStatus, RustyRouter};
 use rusty_router_model::RustyRouterInstance;
 
 use crate::network::LinuxInetPacketNetworkInterface;
