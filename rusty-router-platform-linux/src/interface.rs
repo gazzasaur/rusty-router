@@ -8,7 +8,7 @@ use std::{sync::Arc, error::Error};
 use log::{error, warn};
 use async_trait::async_trait;
 use netlink_packet_route::link::nlas;
-use rusty_router_model::{NetworkInterfaceStatus, NetworkLinkStatus};
+use rusty_router_model::{NetworkInterfaceStatus, NetworkLinkStatus, Router};
 use tokio::sync::RwLock;
 use tokio::time::Instant;
 
@@ -27,24 +27,27 @@ const ENTROPY_SCAN_PERIOD_SECONDS: u64 = 10;
  */
 pub struct InterfaceManager {
     running: Arc<AtomicBool>,
-    data: Arc<RwLock<InterfaceManagerData>>,
+    database: Arc<RwLock<InterfaceManagerDatabase>>,
 }
 impl InterfaceManager {
-    pub async fn new(config: Arc<rusty_router_model::Router>, netlink_socket_factory: Arc<dyn NetlinkSocketFactory + Send + Sync>) -> Result<InterfaceManager, Box<dyn Error + Send + Sync>> {
-        let netlink_message_processor = Arc::new(NetlinkMessageProcessor::new(config));
-        let data = Arc::new(RwLock::new(InterfaceManagerData::new()));
-        let netlink_socket = netlink_socket_factory.create_socket(Box::new(InterfaceManagerNetlinkSocketListener::new(netlink_message_processor.clone(), data.clone()))).await?;
+    pub async fn new(config: Arc<Router>, netlink_socket_factory: Arc<dyn NetlinkSocketFactory + Send + Sync>) -> Result<InterfaceManager, Box<dyn Error + Send + Sync>> {
         let running = Arc::new(AtomicBool::new(true));
-        InterfaceManagerWorker::start(netlink_message_processor, running.clone(), netlink_socket.clone(), data.clone()).await;
-        Ok(InterfaceManager { running, data })
+        let database = Arc::new(RwLock::new(InterfaceManagerDatabase::new()));
+        let interface_manaer = InterfaceManager { running: running.clone(), database: database.clone() };
+
+        // Perform these operations are creating an interface manager to ensure running is set to faule upon failure.
+        let netlink_message_processor = Arc::new(NetlinkMessageProcessor::new(config.clone()));
+        let netlink_socket = netlink_socket_factory.create_socket(Box::new(InterfaceManagerNetlinkSocketListener::new(netlink_message_processor.clone(), database.clone()))).await?;
+        InterfaceManagerWorker::start(config.clone(), running.clone(), database.clone(), netlink_socket.clone(), netlink_message_processor.clone()).await;
+        Ok(interface_manaer)
     }
 
     pub async fn list_network_links(&self) -> Vec<NetworkLinkStatus> {
-        self.data.read().await.list_link_status()
+        self.database.read().await.list_link_status()
     }
 
     pub async fn list_network_interfaces(&self) -> Vec<NetworkInterfaceStatus> {
-        self.data.read().await.list_interface_status()
+        self.database.read().await.list_interface_status()
     }
 }
 impl Drop for InterfaceManager {
@@ -53,15 +56,15 @@ impl Drop for InterfaceManager {
     }
 }
 
-struct InterfaceManagerData {
+struct InterfaceManagerDatabase {
     mapped_network_links: HashMap<String, Arc<NetworkStatusItem<NetworkLinkStatus>>>,
     network_links: HashMap<CanonicalNetworkId, Arc<NetworkStatusItem<NetworkLinkStatus>>>,
     mapped_network_interfaces: HashMap<u64, Arc<NetworkStatusItem<NetworkInterfaceStatus>>>,
     network_interfaces: HashMap<CanonicalNetworkId, Arc<NetworkStatusItem<NetworkInterfaceStatus>>>,
 }
-impl InterfaceManagerData {
-    pub fn new() -> InterfaceManagerData {
-        InterfaceManagerData { network_links: HashMap::new(), mapped_network_links: HashMap::new(), network_interfaces: HashMap::new(), mapped_network_interfaces: HashMap::new() }
+impl InterfaceManagerDatabase {
+    pub fn new() -> InterfaceManagerDatabase {
+        InterfaceManagerDatabase { network_links: HashMap::new(), mapped_network_links: HashMap::new(), network_interfaces: HashMap::new(), mapped_network_interfaces: HashMap::new() }
     }
 
     pub fn list_link_status(&self) -> Vec<NetworkLinkStatus> {
@@ -152,50 +155,52 @@ impl<T> NetworkStatusItem<T> {
 }
 
 struct InterfaceManagerWorker {
+    config: Arc<Router>,
+    running: Arc<AtomicBool>,
+    database: Arc<RwLock<InterfaceManagerDatabase>>,
+    netlink_socket: Arc<dyn NetlinkSocket + Send + Sync>,
     netlink_message_processor: Arc<NetlinkMessageProcessor>,
 }
 impl InterfaceManagerWorker {
-    pub async fn start(netlink_message_processor: Arc<NetlinkMessageProcessor>, running: Arc<AtomicBool>, netlink_socket: Arc<dyn NetlinkSocket + Send + Sync>, data: Arc<RwLock<InterfaceManagerData>>) {
-        let worker = InterfaceManagerWorker { netlink_message_processor };
+    pub async fn start(config: Arc<Router>, running: Arc<AtomicBool>, database: Arc<RwLock<InterfaceManagerDatabase>>, netlink_socket: Arc<dyn NetlinkSocket + Send + Sync>, netlink_message_processor: Arc<NetlinkMessageProcessor>) {
+        let worker = InterfaceManagerWorker { config, running, database, netlink_socket, netlink_message_processor };
 
-        worker.poll(&netlink_socket, &data).await;
+        worker.poll().await;
         tokio::task::spawn(async move {
             let poll_interval = Duration::from_secs(ENTROPY_SCAN_PERIOD_SECONDS);
-            let data = data.clone();
-            let netlink_socket = netlink_socket.clone();
             let mut interval = tokio::time::interval_at(Instant::now().add(poll_interval), poll_interval);
             interval.tick().await;
-            while running.load(Ordering::SeqCst) {
-                worker.poll(&netlink_socket, &data).await;
+            while worker.running.load(Ordering::SeqCst) {
+                worker.poll().await;
                 interval.tick().await;
             };
         });
     }
 
-    pub async fn poll(&self, netlink_socket: &Arc<dyn NetlinkSocket + Send + Sync>, data: &Arc<RwLock<InterfaceManagerData>>) {
-        if let Err(e) = &self.try_poll(netlink_socket, data).await {
+    pub async fn poll(&self) {
+        if let Err(e) = &self.try_poll().await {
             error!("Failed to poll interfaces: {:?}", e);
         }
     }
 
     // This will not debounce interfaces that are deleted and re-created outside this router.
     // However, this is (likely) a deliberate action and will be left out of scope of this router, for now.
-    async fn try_poll(&self, netlink_socket: &Arc<dyn NetlinkSocket + Send + Sync>, data: &Arc<RwLock<InterfaceManagerData>>) -> Result<(), Box<dyn Error + Send + Sync>> {
+    async fn try_poll(&self) -> Result<(), Box<dyn Error + Send + Sync>> {
         let link_message = netlink_packet_route::RtnlMessage::GetLink(netlink_packet_route::LinkMessage::default());
         let address_message = netlink_packet_route::RtnlMessage::GetAddress(netlink_packet_route::AddressMessage::default());
-        let mut link_data = netlink_socket.send_message(build_default_packet(link_message)).await?;
-        let mut network_data = netlink_socket.send_message(build_default_packet(address_message)).await?;
+        let mut link_data = self.netlink_socket.send_message(build_default_packet(link_message)).await?;
+        let mut network_data = self.netlink_socket.send_message(build_default_packet(address_message)).await?;
 
         let mut mapped_devices: HashMap<u64, Arc<NetworkStatusItem<NetworkLinkStatus>>> = HashMap::new();
 
         let mut mapped_links: HashMap<String, Arc<NetworkStatusItem<NetworkLinkStatus>>> = HashMap::new();
         let mut network_links: HashMap<CanonicalNetworkId, Arc<NetworkStatusItem<NetworkLinkStatus>>> = HashMap::new();
-        let mut unmapped_links: HashMap<String, String> = self.netlink_message_processor.get_config().get_network_links().iter().map(|(name, link)| (name.clone(), link.get_device().clone())).collect();
+        let mut unmapped_links: HashMap<String, String> = self.config.get_network_links().iter().map(|(name, link)| (name.clone(), link.get_device().clone())).collect();
 
         let mut unmapped_network_interfaces: HashSet<u64> = HashSet::new();
         let mut missing_network_interfaces = HashMap::new();
         let mut network_interfaces: HashMap<CanonicalNetworkId, Arc<NetworkStatusItem<NetworkInterfaceStatus>>> = HashMap::new();
-        let link_network_interfaces: HashMap<String, String> = self.netlink_message_processor.get_config().get_network_interfaces().iter().map(|(name, interface)| (interface.get_network_link().clone(), name.clone())).collect();
+        let link_network_interfaces: HashMap<String, String> = self.config.get_network_interfaces().iter().map(|(name, interface)| (interface.get_network_link().clone(), name.clone())).collect();
         
         link_data.drain(..).for_each(|response| {
             if let Some((index, network_link)) = self.netlink_message_processor.process_link_message(response) {
@@ -230,7 +235,7 @@ impl InterfaceManagerWorker {
             }
         });
 
-        for (network_interface_name, network_interface) in self.netlink_message_processor.get_config().get_network_interfaces() {
+        for (network_interface_name, network_interface) in self.config.get_network_interfaces() {
             if let Some(network_link) = mapped_links.get(network_interface.get_network_link()) {
                 let id = CanonicalNetworkId::new(network_link.get_id().id(), Some(network_interface_name.clone()), network_link.get_id().device().and_then(|device| Some(device.clone())));
                 let interface_addresses = network_link.get_id().id().map(|id| network_addresses.remove(&id).map_or_else(|| Vec::new(), |addresses| addresses)).map_or_else(|| Vec::new(), |addresses| addresses);
@@ -256,7 +261,7 @@ impl InterfaceManagerWorker {
             network_interfaces.insert(id, interface);
         });
 
-        let mut data = data.write().await;
+        let mut data = self.database.write().await;
         let mut existing_links = data.take_link_status_items();
         let mut existing_interfaces = data.take_interface_status_items();
 
@@ -303,11 +308,11 @@ impl InterfaceManagerWorker {
 }
 
 struct InterfaceManagerNetlinkSocketListener {
-    data: Arc<RwLock<InterfaceManagerData>>,
+    data: Arc<RwLock<InterfaceManagerDatabase>>,
     netlink_message_processor: Arc<NetlinkMessageProcessor>,
 }
 impl InterfaceManagerNetlinkSocketListener {
-    pub fn new(netlink_message_processor: Arc<NetlinkMessageProcessor>, data: Arc<RwLock<InterfaceManagerData>>) -> InterfaceManagerNetlinkSocketListener {
+    pub fn new(netlink_message_processor: Arc<NetlinkMessageProcessor>, data: Arc<RwLock<InterfaceManagerDatabase>>) -> InterfaceManagerNetlinkSocketListener {
         InterfaceManagerNetlinkSocketListener { netlink_message_processor, data }
     }
 }
@@ -351,17 +356,12 @@ impl NetlinkSocketListener for InterfaceManagerNetlinkSocketListener {
 }
 
 struct NetlinkMessageProcessor {
-    config: Arc<rusty_router_model::Router>,
     device_links: HashMap<String, String>,
 }
 impl NetlinkMessageProcessor {
-    pub fn new(config: Arc<rusty_router_model::Router>) -> NetlinkMessageProcessor {
+    pub fn new(config: Arc<Router>) -> NetlinkMessageProcessor {
         let device_links = config.get_network_links().iter().map(|(name, link)| (link.get_device().clone(), name.clone())).collect();
-        NetlinkMessageProcessor { config, device_links }
-    }
-
-    pub fn get_config(&self) -> &Arc<rusty_router_model::Router> {
-        &self.config
+        NetlinkMessageProcessor { device_links }
     }
 
     fn process_link_message(&self, message: netlink_packet_core::NetlinkMessage<netlink_packet_route::RtnlMessage>) -> Option<(u64, NetworkLinkStatus)> {
