@@ -109,7 +109,7 @@ impl DefaultNetlinkSocket {
             }).await {
                 Ok(()) => (),
                 Err(RecvLoopError::RecvLoopTimeout) => (),
-                Err(e) => println!("Failed to fetch data from multicast socket: {:?}", e),
+                Err(e) => error!("Failed to fetch data from multicast socket: {:?}", e),
             };
             for message in messages {
                 listener.message_received(message).await;
