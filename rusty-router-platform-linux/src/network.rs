@@ -225,7 +225,7 @@ mod test {
                         self.count.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
                         let data: String = std::iter::repeat(()).map(|()| rng.sample(rand::distributions::Alphanumeric)).map(char::from).take(128).collect();
                         nix::sys::socket::send(self.fd, data.as_bytes(), super::MsgFlags::empty()).expect("Failed to send data.");
-            
+
                         // self.socket_handler.on_recv(buffer[0..size].to_vec()).await
                     },
                     Err(nix::Error::Sys(nix::errno::Errno::EAGAIN)) => return,

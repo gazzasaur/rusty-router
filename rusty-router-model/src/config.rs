@@ -147,7 +147,7 @@ mod tests {
                 priority: HashMap::from_iter(vec![(RouteSource::Static, 10)].drain(..)),
             })].drain(..)),
         };
-        assert_eq!("{\"network_links\":{\"red1\":{\"device\":\"eth0\",\"network_link_type\":\"GenericInterface\"}},\"network_interfaces\":{\"BlueInterface\":{\"vrf\":null,\"network_link\":\"lo\",\"ip_addresses\":[[\"IpV4\",\"192.168.0.1\",32]]}},\"vrfs\":{\"Blue\":{\"table\":{\"VirtualTable\":10},\"static_routes\":[{\"prefix\":[\"IpV4\",\"172.0.0.0\",16],\"next_hop\":\"10.10.10.10\",\"metric\":100}],\"priority\":{\"Static\":10}}}}", serde_json::to_string(&config).unwrap());
+        assert_eq!("{\"network_links\":{\"red1\":{\"device\":\"eth0\",\"network_link_type\":\"GenericInterface\"}},\"network_interfaces\":{\"BlueInterface\":{\"vrf\":null,\"network_link\":\"lo\",\"ip_addresses\":[[\"192.168.0.1\",32]]}},\"vrfs\":{\"Blue\":{\"table\":{\"VirtualTable\":10},\"static_routes\":[{\"prefix\":[\"172.0.0.0\",16],\"next_hop\":\"10.10.10.10\",\"metric\":100}],\"priority\":{\"Static\":10}}}}", serde_json::to_string(&config).unwrap());
         Ok(())
     }
 }

@@ -85,7 +85,7 @@ impl DefaultNetlinkSocket {
         socket.connect(&netlink_sys::SocketAddr::new(0, 0))?;
 
         let mut multicast_socket = netlink_sys::TokioSocket::new(protocols::NETLINK_ROUTE)?;
-        multicast_socket.bind(&netlink_sys::SocketAddr::new(0, 0xFFFFFFFF))?;
+        multicast_socket.bind(&netlink_sys::SocketAddr::new(0, 0xFFFF))?;
         multicast_socket.connect(&netlink_sys::SocketAddr::new(0, 0))?;
 
         let running = Arc::new(AtomicBool::new(true));
