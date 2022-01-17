@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::fmt::{Display, Formatter};
+use std::net::IpAddr;
 use serde::{Serialize, Deserialize};
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -101,15 +102,15 @@ pub struct StaticRoute {
 
 // TODO Use std IpAddress
 #[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Clone, PartialOrd, Ord)]
-pub struct IpAddress (pub IpAddressType, pub String, pub u64);
+pub struct IpAddress (pub IpAddr, pub u64);
 impl IpAddress {
-    pub fn new(family: IpAddressType, address: String, prefix: u64) -> IpAddress {
-        IpAddress(family, address, prefix)
+    pub fn new(address: IpAddr, prefix: u64) -> IpAddress {
+        IpAddress(address, prefix)
     }
 }
 impl Display for IpAddress {
     fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
-        write!(f, "{}/{}", self.1, self.2)
+        write!(f, "{}/{}", self.0, self.1)
     }
 }
 
@@ -122,10 +123,10 @@ pub enum IpAddressType {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::iter::FromIterator;
+    use std::{iter::FromIterator, str::FromStr, net::AddrParseError};
 
     #[test]
-    fn it_parses_config() {
+    fn it_parses_config() -> Result<(), AddrParseError> {
         let config = Router {
             network_links: HashMap::from_iter(vec![("red1".to_string(), NetworkLink {
                 device: "eth0".to_string(),
@@ -134,12 +135,12 @@ mod tests {
             network_interfaces: HashMap::from_iter(vec![("BlueInterface".to_string(), NetworkInterface {
                 vrf: None,
                 network_link: "lo".to_string(),
-                ip_addresses: vec![IpAddress(IpAddressType::IpV4, "192.168.0.1".to_string(), 32)],
+                ip_addresses: vec![IpAddress(IpAddr::from_str(&"192.168.0.1")?, 32)],
             })]),
         vrfs: HashMap::from_iter(vec![("Blue".to_string(), Vrf {
                 table: VrfTable::VirtualTable(10),
                 static_routes: vec![StaticRoute {
-                    prefix: IpAddress(IpAddressType::IpV4, "172.0.0.0".to_string(), 16),
+                    prefix: IpAddress(IpAddr::from_str("172.0.0.0")?, 16),
                     next_hop: "10.10.10.10".to_string(),
                     metric: 100,
                 }],
@@ -147,5 +148,6 @@ mod tests {
             })].drain(..)),
         };
         assert_eq!("{\"network_links\":{\"red1\":{\"device\":\"eth0\",\"network_link_type\":\"GenericInterface\"}},\"network_interfaces\":{\"BlueInterface\":{\"vrf\":null,\"network_link\":\"lo\",\"ip_addresses\":[[\"IpV4\",\"192.168.0.1\",32]]}},\"vrfs\":{\"Blue\":{\"table\":{\"VirtualTable\":10},\"static_routes\":[{\"prefix\":[\"IpV4\",\"172.0.0.0\",16],\"next_hop\":\"10.10.10.10\",\"metric\":100}],\"priority\":{\"Static\":10}}}}", serde_json::to_string(&config).unwrap());
+        Ok(())
     }
 }

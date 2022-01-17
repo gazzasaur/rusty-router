@@ -85,7 +85,7 @@ impl DefaultNetlinkSocket {
         socket.connect(&netlink_sys::SocketAddr::new(0, 0))?;
 
         let mut multicast_socket = netlink_sys::TokioSocket::new(protocols::NETLINK_ROUTE)?;
-        multicast_socket.bind(&netlink_sys::SocketAddr::new(0, 0xFFFF))?;
+        multicast_socket.bind(&netlink_sys::SocketAddr::new(0, 0xFFFFFFFF))?;
         multicast_socket.connect(&netlink_sys::SocketAddr::new(0, 0))?;
 
         let running = Arc::new(AtomicBool::new(true));
@@ -104,12 +104,12 @@ impl DefaultNetlinkSocket {
             // let data_future = lock.recv(&mut receive_buffer[..]);
 
             let mut messages = Vec::new();
-            match DefaultNetlinkSocket::recv_loop(0, &false, &mut lock, |packet| {
+            match DefaultNetlinkSocket::recv_loop(None, &false, &mut lock, |packet| {
                 messages.push(packet);
             }).await {
                 Ok(()) => (),
                 Err(RecvLoopError::RecvLoopTimeout) => (),
-                Err(e) => error!("Failed to fetch data from multicast socket: {:?}", e),
+                Err(e) => println!("Failed to fetch data from multicast socket: {:?}", e),
             };
             for message in messages {
                 listener.message_received(message).await;
@@ -118,7 +118,7 @@ impl DefaultNetlinkSocket {
     }
 
     /// Wait until done should typically be true unless using multicast sockets.
-    async fn recv_loop(sequence_number: u32, wait_until_done: &bool, socket: &mut netlink_sys::TokioSocket, mut callback: impl FnMut(netlink_packet_core::NetlinkMessage<netlink_packet_route::RtnlMessage>) -> ()) -> Result<(), RecvLoopError> {
+    async fn recv_loop(sequence_number: Option<u32>, wait_until_done: &bool, socket: &mut netlink_sys::TokioSocket, mut callback: impl FnMut(netlink_packet_core::NetlinkMessage<netlink_packet_route::RtnlMessage>) -> ()) -> Result<(), RecvLoopError> {
         // Allocating 32k of memory each call.  This could be passed at the cost of locking.
         let mut receive_buffer = vec![0; (2 as usize).pow(16)];
         
@@ -137,7 +137,7 @@ impl DefaultNetlinkSocket {
                 let packet_length = rx_packet.header.length as usize;
                 let packet_sequence_number = rx_packet.header.sequence_number;
     
-                if packet_sequence_number == sequence_number {
+                if sequence_number.map(|sequence_number| packet_sequence_number == sequence_number).unwrap_or(true) {
                     if rx_packet.payload == netlink_packet_core::NetlinkPayload::Done {
                         return Ok(());
                     }
@@ -167,7 +167,7 @@ impl NetlinkSocket for DefaultNetlinkSocket {
         socket.send(&buf[..]).await?;
     
         let mut received_messages = Vec::new();
-        DefaultNetlinkSocket::recv_loop(sequence_number, &true, &mut socket, |rx_packet| {
+        DefaultNetlinkSocket::recv_loop(Some(sequence_number), &true, &mut socket, |rx_packet| {
             received_messages.push(rx_packet);
         }).await?;
         Ok(received_messages)

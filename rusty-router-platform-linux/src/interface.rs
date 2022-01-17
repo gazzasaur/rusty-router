@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::net::{Ipv4Addr, Ipv6Addr};
+use std::net::{Ipv4Addr, Ipv6Addr, IpAddr};
 use std::ops::Add;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
@@ -117,7 +117,7 @@ impl InterfaceManagerDatabase {
     }
 
     pub fn get_interface_status_item_by_device_index(&self, device_index: &u64) -> Option<&NetworkStatusItem<NetworkInterfaceStatus>> {
-        self.network_interfaces_by_device_index.get(device_index).and_then(|device_index| self.network_interfaces.get(device_index))
+        self.network_interfaces_by_device_index.get(device_index).and_then(|index| self.network_interfaces.get(index))
     }
 
     pub fn take_interface_status_items(&mut self) -> Vec<NetworkStatusItem<NetworkInterfaceStatus>> {
@@ -302,7 +302,8 @@ impl InterfaceManagerWorker {
         for (network_interface_name, network_interface) in self.config.get_network_interfaces() {
             if let Some(network_link) = mapped_links.get(network_interface.get_network_link()) {
                 let id = CanonicalNetworkId::new(network_link.get_id().id(), Some(network_interface_name.clone()), network_link.get_id().device().and_then(|device| Some(device.clone())));
-                let interface_addresses = network_link.get_id().id().map(|id| network_addresses.remove(&id).map_or_else(|| Vec::new(), |addresses| addresses)).map_or_else(|| Vec::new(), |addresses| addresses);
+                let mut interface_addresses = network_link.get_id().id().map(|id| network_addresses.remove(&id).map_or_else(|| Vec::new(), |addresses| addresses)).map_or_else(|| Vec::new(), |addresses| addresses);
+                interface_addresses.sort();
                 network_interfaces.insert(id.clone(), NetworkStatusItem::new(id, NetworkInterfaceStatus::new(Some(network_interface_name.clone()), interface_addresses, network_link.get_status().clone())));
             } else {
                 warn!("Could not match network interface '{}' to a network link '{}'.  Please check the router configuration.", network_interface_name, network_interface.get_network_link());
@@ -523,8 +524,7 @@ impl NetlinkMessageProcessor {
     }
 
     fn process_address_message(&self, message: netlink_packet_core::NetlinkMessage<netlink_packet_route::RtnlMessage>) -> Option<(u64, rusty_router_model::IpAddress)> {
-        let mut address: Option<String> = None;
-        let mut family: Option<rusty_router_model::IpAddressType> = None;
+        let mut address: Option<IpAddr> = None;
  
         let msg = match message.payload {
             netlink_packet_core::NetlinkPayload::InnerMessage(netlink_packet_route::RtnlMessage::NewAddress(msg)) => msg,
@@ -542,8 +542,7 @@ impl NetlinkMessageProcessor {
             for attribute in msg.nlas.iter() {
                 if let netlink_packet_route::address::nlas::Nla::Address(data) = attribute {
                     if data.len() == 4 {
-                        family = Some(rusty_router_model::IpAddressType::IpV4);
-                        address = Some(Ipv4Addr::from([data[0], data[1], data[2], data[3]]).to_string());
+                        address = Some(IpAddr::V4(Ipv4Addr::from([data[0], data[1], data[2], data[3]])));
                     }
                 }
             }
@@ -552,16 +551,15 @@ impl NetlinkMessageProcessor {
             for attribute in msg.nlas.iter() {
                 if let netlink_packet_route::address::nlas::Nla::Address(data) = attribute {
                     if data.len() == 16 {
-                        family = Some(rusty_router_model::IpAddressType::IpV6);
-                        address = Some(Ipv6Addr::from([data[0], data[1], data[2], data[3], data[4], data[5], data[6], data[7], data[8], data[9], data[10], data[11], data[12], data[13], data[14], data[15]]).to_string())
+                        address = Some(IpAddr::V6(Ipv6Addr::from([data[0], data[1], data[2], data[3], data[4], data[5], data[6], data[7], data[8], data[9], data[10], data[11], data[12], data[13], data[14], data[15]])))
                     }
                 }
             }
         }
     
-        family.and_then(|family| address.and_then(|address| Some((index, rusty_router_model::IpAddress (
-            family, address, prefix
-        )))))
+        address.and_then(|address| Some((index, rusty_router_model::IpAddress (
+            address, prefix
+        ))))
     }
 }
 
