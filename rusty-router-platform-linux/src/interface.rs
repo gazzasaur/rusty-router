@@ -8,7 +8,7 @@ use std::{sync::Arc, error::Error};
 use log::{error, warn};
 use async_trait::async_trait;
 use netlink_packet_route::link::nlas;
-use rusty_router_model::{NetworkInterfaceStatus, NetworkLinkStatus, Router};
+use rusty_router_model::{NetworkInterfaceStatus, NetworkLinkStatus, Router, NetworkLinkOperationalState};
 use tokio::sync::RwLock;
 use tokio::time::Instant;
 
@@ -114,6 +114,10 @@ impl InterfaceManagerDatabase {
 
     pub fn list_interface_status(&self) -> Vec<NetworkInterfaceStatus> {
         self.network_interfaces.iter().map(|(_, value)| value.get_status().clone()).collect()
+    }
+
+    pub fn get_interface_status_item_by_device_index(&self, device_index: &u64) -> Option<&NetworkStatusItem<NetworkInterfaceStatus>> {
+        self.network_interfaces_by_device_index.get(device_index).and_then(|device_index| self.network_interfaces.get(device_index))
     }
 
     pub fn take_interface_status_items(&mut self) -> Vec<NetworkStatusItem<NetworkInterfaceStatus>> {
@@ -374,7 +378,17 @@ impl InterfaceManagerWorker {
             });
         });
         database.take_interface_status_items().into_iter().for_each(|item| {
-            notify_deleted_interfaces.push(item);
+            notify_deleted_interfaces.push(NetworkStatusItem::new(
+                item.get_id().clone(), NetworkInterfaceStatus::new(
+                    item.get_status().get_name().clone(), 
+                    item.get_status().get_addresses().clone(),
+                    NetworkLinkStatus::new(
+                        item.get_status().get_network_link_status().get_name().clone(),
+                        item.get_status().get_network_link_status().get_device().clone(),
+                        NetworkLinkOperationalState::NotFound
+                    )
+                )
+            ));
         });
         established_interfaces.drain(..).for_each(|item| {
             database.set_interface_status_item(item);
@@ -401,51 +415,79 @@ impl NetlinkSocketListener for InterfaceManagerNetlinkSocketListener {
     async fn message_received(&self, message: netlink_packet_core::NetlinkMessage<netlink_packet_route::RtnlMessage>) {
         if let netlink_packet_core::NetlinkPayload::InnerMessage(netlink_packet_route::RtnlMessage::NewLink(_)) = message.payload {
             if let Some((index, link)) = self.netlink_message_processor.process_link_message(message) {
+                let mut database = self.database.write().await;
                 let id = CanonicalNetworkId::new(Some(index), link.get_name().clone(), Some(link.get_device().clone()));
-                let link = NetworkStatusItem::new(id.clone(), link);
-                self.database.write().await.set_link_status_item(link); // Ignore deleted links
+                let link = NetworkStatusItem::new(id.clone(), link.clone());
+                database.set_link_status_item(link.clone()); // Ignore deleted links
+
+                let mut updated_interface = None;
+                database.get_interface_status_item_by_device_index(&index).into_iter().find(|interface| interface.get_status().get_network_link_status().get_device() == link.get_status().get_device()).into_iter().for_each(|interface| {
+                    let id = CanonicalNetworkId::new(Some(index), interface.get_status().get_name().clone(), Some(interface.get_status().get_network_link_status().get_device().clone()));
+                    updated_interface = Some(NetworkStatusItem::new(id, NetworkInterfaceStatus::new(interface.get_status().get_name().clone(), interface.get_status().get_addresses().clone(), link.get_status().clone())));
+                });
+                updated_interface.iter().for_each(|interface| {
+                    database.set_interface_status_item(interface.clone());
+                });
+                
                 // TODO Notify
             }
         } else if let netlink_packet_core::NetlinkPayload::InnerMessage(netlink_packet_route::RtnlMessage::DelLink(_)) = message.payload {
             if let Some((index, link)) = self.netlink_message_processor.process_link_message(message) {
+                let mut database = self.database.write().await;
+
                 let mut deleted_items = Vec::new();
                 let id = CanonicalNetworkId::new(Some(index), link.get_name().clone(), Some(link.get_device().clone()));
                 if let Some(_) = id.name() {
-                    let link = NetworkStatusItem::new(id.clone(), link);
-                    self.database.write().await.set_link_status_item(link.clone()); // Ignore deleted links
+                    let link = NetworkStatusItem::new(id.clone(), link.clone());
+                    database.set_link_status_item(link.clone()); // Ignore deleted links
                     // TODO Notify
                 } else {
-                    self.database.write().await.remove_link_status_item(&id, &mut deleted_items);
+                    database.remove_link_status_item(&id, &mut deleted_items);
                 }
+
+                let mut updated_interface = None;
+                let mut deleted_interfaces = Vec::new();
+                database.get_interface_status_item_by_device_index(&index).into_iter().find(|interface| interface.get_status().get_network_link_status().get_device() == link.get_device()).into_iter().for_each(|interface| {
+                    let id = CanonicalNetworkId::new(Some(index), interface.get_status().get_name().clone(), Some(interface.get_status().get_network_link_status().get_device().clone()));
+                    updated_interface = Some(NetworkStatusItem::new(id, NetworkInterfaceStatus::new(interface.get_status().get_name().clone(), interface.get_status().get_addresses().clone(), link.clone())));
+                });
+                updated_interface.iter().for_each(|interface| {
+                    if let Some(_) = interface.get_id().name() {
+                        database.set_interface_status_item(interface.clone());
+                    } else {
+                        database.remove_interface_status_item(interface.get_id(), &mut deleted_interfaces);
+                    }
+                });
             }
+        } else if let netlink_packet_core::NetlinkPayload::InnerMessage(netlink_packet_route::RtnlMessage::NewAddress(_)) = message.payload {
+            if let Some((index, address)) = self.netlink_message_processor.process_address_message(message) {
+                let mut database = self.database.write().await;
+                if let Some(interface) = database.get_interface_status_item_by_device_index(&index) {
+                    let mut addresses = interface.get_status().get_addresses().clone();
+                    addresses.push(address);
+                    addresses.sort();
 
-            // TODO Handle Interfaces
+                    let id = interface.get_id().clone();
+                    let updated_interface = NetworkInterfaceStatus::new(interface.get_status().get_name().clone(), addresses, interface.get_status().get_network_link_status().clone());
+                    database.set_interface_status_item(NetworkStatusItem::new(id, updated_interface));
+                }
+                // TODO Notify
+            }
+        } else if let netlink_packet_core::NetlinkPayload::InnerMessage(netlink_packet_route::RtnlMessage::DelAddress(_)) = message.payload {
+            if let Some((index, address)) = self.netlink_message_processor.process_address_message(message) {
+                let mut database = self.database.write().await;
+                if let Some(interface) = database.get_interface_status_item_by_device_index(&index) {
+                    let mut addresses = interface.get_status().get_addresses().clone();
+                    if let Some(index) = addresses.iter().position(|x| x == &address) {
+                        addresses.remove(index);
+                    }
 
-        // } else if let netlink_packet_core::NetlinkPayload::InnerMessage(netlink_packet_route::RtnlMessage::NewAddress(_)) = message.payload {
-        //     if let Some((index, address)) = self.netlink_message_processor.process_address_message(message) {
-        //         if let Some(interface) = data.get_interface_status_item(index) {
-        //             let mut addresses = interface.get_status().get_addresses().clone();
-        //             addresses.push(address);
-        //             addresses.sort();
-
-        //             let id = interface.get_id().clone();
-        //             let updated_interface = NetworkInterfaceStatus::new(interface.get_status().get_name().clone(), addresses, interface.get_status().get_network_link_status().clone());
-        //             data.set_interface_status_item(id.clone(), Arc::new(NetworkStatusItem::new(id, updated_interface)));
-        //         }
-        //     }
-        // } else if let netlink_packet_core::NetlinkPayload::InnerMessage(netlink_packet_route::RtnlMessage::DelAddress(_)) = message.payload {
-        //     if let Some((index, address)) = self.netlink_message_processor.process_address_message(message) {
-        //         if let Some(interface) = data.get_interface_status_item(index) {
-        //             let mut addresses = interface.get_status().get_addresses().clone();
-        //             if let Some(index) = addresses.iter().position(|x| x == &address) {
-        //                 addresses.remove(index);
-        //             }
-
-        //             let id = interface.get_id().clone();
-        //             let updated_interface = NetworkInterfaceStatus::new(interface.get_status().get_name().clone(), addresses, interface.get_status().get_network_link_status().clone());
-        //             data.set_interface_status_item(id.clone(), Arc::new(NetworkStatusItem::new(id, updated_interface)));
-        //         }
-        //     }
+                    let id = interface.get_id().clone();
+                    let updated_interface = NetworkInterfaceStatus::new(interface.get_status().get_name().clone(), addresses, interface.get_status().get_network_link_status().clone());
+                    database.set_interface_status_item(NetworkStatusItem::new(id, updated_interface));
+                }
+                // TODO Notify
+            }
         }
     }
 }
