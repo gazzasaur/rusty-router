@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::net::{Ipv4Addr, Ipv6Addr};
 use std::ops::Add;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -264,14 +264,12 @@ impl InterfaceManagerWorker {
         let mut network_links: HashMap<CanonicalNetworkId, NetworkStatusItem<NetworkLinkStatus>> = HashMap::new();
         let mut unmapped_links: HashMap<String, String> = self.config.get_network_links().iter().map(|(name, link)| (name.clone(), link.get_device().clone())).collect();
 
-        let mut unmapped_network_interfaces: HashSet<u64> = HashSet::new();
         let mut missing_network_interfaces = HashMap::new();
         let mut network_interfaces: HashMap<CanonicalNetworkId, NetworkStatusItem<NetworkInterfaceStatus>> = HashMap::new();
         let link_network_interfaces: HashMap<String, String> = self.config.get_network_interfaces().iter().map(|(name, interface)| (interface.get_network_link().clone(), name.clone())).collect();
         
         link_data.drain(..).for_each(|response| {
             if let Some((index, network_link)) = self.netlink_message_processor.process_link_message(response) {
-                unmapped_network_interfaces.insert(index);
                 let id = CanonicalNetworkId::new(Some(index), network_link.get_name().clone(), Some(network_link.get_device().clone()));
                 let link_network_status_item = NetworkStatusItem::new(id.clone(), network_link);
 
@@ -297,7 +295,6 @@ impl InterfaceManagerWorker {
         network_data.drain(..).for_each(|response| {
             if let Some((index, address)) = self.netlink_message_processor.process_address_message(response) {
                 let addresses = network_addresses.entry(index).or_insert(vec![]);
-                unmapped_network_interfaces.remove(&index);
                 addresses.push(address);
             }
         });
@@ -318,12 +315,6 @@ impl InterfaceManagerWorker {
                 network_interfaces.insert(id.clone(), NetworkStatusItem::new(id, NetworkInterfaceStatus::new(None, addresses, network_link.get_status().clone())));            
             }
         }
-        unmapped_network_interfaces.drain().for_each(|index| {
-            if let Some(network_link) = mapped_devices.get(&index) {
-                let id = CanonicalNetworkId::new(Some(index), None, Some(network_link.get_status().get_device().clone()));
-                network_interfaces.insert(id.clone(), NetworkStatusItem::new(id, NetworkInterfaceStatus::new(None, vec![], network_link.get_status().clone())));            
-            }
-        });
         missing_network_interfaces.drain().for_each(|(id, interface)| {
             network_interfaces.insert(id, interface);
         });
@@ -436,20 +427,22 @@ impl NetlinkSocketListener for InterfaceManagerNetlinkSocketListener {
                 let mut database = self.database.write().await;
 
                 let mut deleted_items = Vec::new();
-                let id = CanonicalNetworkId::new(Some(index), link.get_name().clone(), Some(link.get_device().clone()));
-                if let Some(_) = id.name() {
-                    let link = NetworkStatusItem::new(id.clone(), link.clone());
+                let id = CanonicalNetworkId::new(None, link.get_name().clone(), Some(link.get_device().clone()));
+                let link = if let Some(_) = id.name() {
+                    let link = NetworkStatusItem::new(id.clone(), NetworkLinkStatus::new(link.get_name().clone(), link.get_device().clone(), NetworkLinkOperationalState::NotFound));
                     database.set_link_status_item(link.clone()); // Ignore deleted links
+                    link
                     // TODO Notify
                 } else {
                     database.remove_link_status_item(&id, &mut deleted_items);
-                }
+                    NetworkStatusItem::new(id.clone(), link)
+                };
 
                 let mut updated_interface = None;
                 let mut deleted_interfaces = Vec::new();
-                database.get_interface_status_item_by_device_index(&index).into_iter().find(|interface| interface.get_status().get_network_link_status().get_device() == link.get_device()).into_iter().for_each(|interface| {
-                    let id = CanonicalNetworkId::new(Some(index), interface.get_status().get_name().clone(), Some(interface.get_status().get_network_link_status().get_device().clone()));
-                    updated_interface = Some(NetworkStatusItem::new(id, NetworkInterfaceStatus::new(interface.get_status().get_name().clone(), interface.get_status().get_addresses().clone(), link.clone())));
+                database.get_interface_status_item_by_device_index(&index).into_iter().find(|interface| interface.get_status().get_network_link_status().get_device() == link.get_status().get_device()).into_iter().for_each(|interface| {
+                    let id = CanonicalNetworkId::new(None, interface.get_status().get_name().clone(), Some(interface.get_status().get_network_link_status().get_device().clone()));
+                    updated_interface = Some(NetworkStatusItem::new(id, NetworkInterfaceStatus::new(interface.get_status().get_name().clone(), interface.get_status().get_addresses().clone(), link.get_status().clone())));
                 });
                 updated_interface.iter().for_each(|interface| {
                     if let Some(_) = interface.get_id().name() {
