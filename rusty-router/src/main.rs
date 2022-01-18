@@ -2,22 +2,8 @@ use env_logger;
 use log::{error, warn};
 use std::error::Error;
 use std::sync::Arc;
-use async_trait::async_trait;
 use std::collections::HashMap;
-use rusty_router_model::{NetworkEventHandler, RustyRouter};
-
-struct MyNetworkEventHandler {
-}
-#[async_trait]
-impl NetworkEventHandler for MyNetworkEventHandler {
-    async fn on_recv(&self, data: Vec<u8>) {
-        println!("{:?}", data);
-    }
-
-    async fn on_error(&self, message: String) {
-        println!("{:?}", message);
-    }
-}
+use rusty_router_model::RustyRouter;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
@@ -154,13 +140,6 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
         });
         println!();
     };
-
-    {
-        let device = nl.connect_ipv4(&"Loopback".to_string(), 98, Vec::new(), Box::new(MyNetworkEventHandler {  })).await?;
-        device.send("127.0.0.1".parse()?, "Got it".as_bytes().to_vec()).await?;
-        tokio::time::sleep(std::time::Duration::from_millis(1)).await;
-    }
-    tokio::time::sleep(std::time::Duration::from_millis(100000)).await;
 
     Ok(())
 }

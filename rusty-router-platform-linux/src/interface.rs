@@ -536,6 +536,7 @@ impl NetlinkMessageProcessor {
         };
 
         let index = msg.header.index as u64;
+        // Here we trust the prefix from the OS.  Validation that is too strict here could lead to compatibility issues.
         let prefix = msg.header.prefix_len as u64;
     
         if msg.header.family as u16 == netlink_packet_route::AF_INET {
@@ -672,6 +673,16 @@ mod tests {
             header: AddressHeader { index: 10, flags: random(), family: netlink_packet_route::AF_INET as u8, prefix_len: 20, scope: random() },
             nlas: vec![netlink_packet_route::address::nlas::Nla::Address(vec![1, 2, 3, 4])]
         })) }) == Some((10, IpAddress::new(IpAddr::from_str("1.2.3.4")?, 20))));
+
+        assert!(subject.process_address_message(NetlinkMessage { header: netlink_header, payload: NetlinkPayload::InnerMessage(RtnlMessage::DelAddress(AddressMessage {
+            header: AddressHeader { index: 15, flags: random(), family: netlink_packet_route::AF_INET6 as u8, prefix_len: 56, scope: random() },
+            nlas: vec![netlink_packet_route::address::nlas::Nla::Address(vec![16, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1])]
+        })) }) == Some((15, IpAddress::new(IpAddr::from_str("100f:0e0d:0c0b:0a09:0807:0605:0403:0201")?, 56))));
+
+        assert!(subject.process_address_message(NetlinkMessage { header: netlink_header, payload: NetlinkPayload::InnerMessage(RtnlMessage::GetAddress(AddressMessage {
+            header: AddressHeader { index: 15, flags: random(), family: netlink_packet_route::AF_INET6 as u8, prefix_len: 56, scope: random() },
+            nlas: vec![netlink_packet_route::address::nlas::Nla::Address(vec![16, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1])]
+        })) }) == None);
 
         Ok(())
     }
