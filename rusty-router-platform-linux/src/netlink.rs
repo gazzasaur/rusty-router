@@ -1,7 +1,4 @@
 use log::{error, warn};
-use mockall::*;
-use mockall::predicate::*;
-
 use async_trait::async_trait;
 
 use rand::Rng;
@@ -16,6 +13,9 @@ use netlink_packet_route;
 use netlink_sys::protocols;
 use netlink_packet_route::constants;
 
+#[cfg(test)] use mockall::*;
+#[cfg(test)] use mockall::predicate::*;
+
 // This package is the wrapper interface around the kernel.
 // This should be kept as thin as possible as it it integ tested but not unit tested.
 // The code used was provided from the Rust Netlink package.
@@ -28,19 +28,19 @@ pub enum RecvLoopError {
     DeserializeError(DecodeError),
 }
 
-#[automock]
+#[cfg_attr(test, automock)]
 #[async_trait]
 pub trait NetlinkSocketListener {
     async fn message_received(&self, message: netlink_packet_core::NetlinkMessage<netlink_packet_route::RtnlMessage>);
 }
 
-#[automock]
+#[cfg_attr(test, automock)]
 #[async_trait]
 pub trait NetlinkSocketFactory {
     async fn create_socket(&self, listener: Box<dyn NetlinkSocketListener + Send + Sync>) -> std::result::Result<Arc<dyn NetlinkSocket + Send + Sync>, Box<dyn Error + Send + Sync>>;
 }
 
-#[automock]
+#[cfg_attr(test, automock)]
 #[async_trait]
 pub trait NetlinkSocket {
     async fn send_message(&self, message: netlink_packet_core::NetlinkMessage<netlink_packet_route::RtnlMessage>) -> std::result::Result<Vec<netlink_packet_core::NetlinkMessage<netlink_packet_route::RtnlMessage>>, Box<dyn Error + Send + Sync>>;

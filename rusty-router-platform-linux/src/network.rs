@@ -256,17 +256,17 @@ mod test {
             nix::sys::socket::send(sockets.0, "Hello".to_string().as_bytes(), super::MsgFlags::empty()).expect("Failed to send data.");
         }
 
-        tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
+        tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
         println!("Sinking Data");
 
-        tokio::time::sleep(tokio::time::Duration::from_millis(10000)).await;
+        tokio::time::sleep(tokio::time::Duration::from_millis(3000)).await;
         println!("Creating Data");
         println!("{:?}", chrono::offset::Utc::now());
 
         println!("Waiting");
         println!("{:?}", chrono::offset::Utc::now());
         
-        tokio::time::sleep(tokio::time::Duration::from_millis(30000)).await;
+        tokio::time::sleep(tokio::time::Duration::from_millis(5000)).await;
         println!("Send Executed: {}", count.load(Ordering::SeqCst));
         println!("{:?}", chrono::offset::Utc::now());
 

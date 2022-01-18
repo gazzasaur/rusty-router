@@ -569,13 +569,44 @@ mod tests {
     use std::error::Error;
     use std::sync::Arc;
 
+    use netlink_packet_core::NetlinkHeader;
+    use netlink_packet_core::NetlinkMessage;
+    use netlink_packet_core::NetlinkPayload;
+    use netlink_packet_route::LinkHeader;
+    use netlink_packet_route::LinkMessage;
+    use netlink_packet_route::RtnlMessage;
+    use rand::random;
+    use rusty_router_model::NetworkLinkStatus;
+    use rusty_router_model::Router;
+
     use crate::netlink::MockNetlinkSocket;
     use crate::netlink::MockNetlinkSocketFactory;
 
     use super::InterfaceManager;
+    use super::NetlinkMessageProcessor;
 
     #[tokio::test]
-    pub async fn test_list_network_interfaces_empty() -> Result<(), Box<dyn Error + Send + Sync>> {
+    pub async fn test_process_link_message_empty() -> Result<(), Box<dyn Error + Send + Sync>> {
+        let netlink_header = NetlinkHeader { sequence_number: random(), flags: random(), port_number: random(), length: random(), message_type: random() };
+
+        let config = Arc::new(Router::new(HashMap::new(), HashMap::new(), HashMap::new()));
+        let subject = NetlinkMessageProcessor::new(config);
+
+        assert!(subject.process_link_message(NetlinkMessage { header: netlink_header, payload: NetlinkPayload::InnerMessage(RtnlMessage::NewLink(LinkMessage {
+            header: LinkHeader { index: random(), link_layer_type: random(), change_mask: random(), flags: random(), interface_family: random() },
+            nlas: vec![]
+        })) }) == None);
+
+        assert!(subject.process_link_message(NetlinkMessage { header: netlink_header, payload: NetlinkPayload::InnerMessage(RtnlMessage::NewLink(LinkMessage {
+            header: LinkHeader { index: 10, link_layer_type: random(), change_mask: random(), flags: random(), interface_family: random() },
+            nlas: vec![netlink_packet_route::link::nlas::Nla::IfName(String::from("SomeDevice"))]
+        })) }) == Some((10, NetworkLinkStatus::new(None, String::from("SomeDevice"), rusty_router_model::NetworkLinkOperationalState::Unknown))));
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    pub async fn test_list_empty() -> Result<(), Box<dyn Error + Send + Sync>> {
         let mut mock_netlink_socket = MockNetlinkSocket::new();
         let mut mock_netlink_socket_factory = MockNetlinkSocketFactory::new();
 
@@ -588,7 +619,11 @@ mod tests {
         });
         
         let mock_netlink_socket_factory = Arc::new(mock_netlink_socket_factory);
-        InterfaceManager::new(Arc::new(rusty_router_model::Router::new(HashMap::new(), HashMap::new(), HashMap::new())), mock_netlink_socket_factory).await?;
+        let subject = InterfaceManager::new(Arc::new(rusty_router_model::Router::new(HashMap::new(), HashMap::new(), HashMap::new())), mock_netlink_socket_factory).await?;
+
+        assert!(subject.list_network_links().await == vec![]);
+        assert!(subject.list_network_interfaces().await == vec![]);
+
         Ok(())
     }
 
