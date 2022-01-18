@@ -567,16 +567,21 @@ impl NetlinkMessageProcessor {
 mod tests {
     use std::collections::HashMap;
     use std::error::Error;
+    use std::net::IpAddr;
+    use std::str::FromStr;
     use std::sync::Arc;
 
     use netlink_packet_core::NetlinkHeader;
     use netlink_packet_core::NetlinkMessage;
     use netlink_packet_core::NetlinkPayload;
+    use netlink_packet_route::AddressHeader;
+    use netlink_packet_route::AddressMessage;
     use netlink_packet_route::LinkHeader;
     use netlink_packet_route::LinkMessage;
     use netlink_packet_route::RtnlMessage;
     use netlink_packet_route::link::nlas::State;
     use rand::random;
+    use rusty_router_model::IpAddress;
     use rusty_router_model::NetworkLink;
     use rusty_router_model::NetworkLinkStatus;
     use rusty_router_model::NetworkLinkType;
@@ -615,6 +620,17 @@ mod tests {
             nlas: vec![netlink_packet_route::link::nlas::Nla::IfName(String::from("SomeDevice1")), netlink_packet_route::link::nlas::Nla::OperState(State::Up)]
         })) }) == Some((15, NetworkLinkStatus::new(None, String::from("SomeDevice1"), rusty_router_model::NetworkLinkOperationalState::Up))));
 
+        assert!(subject.process_link_message(NetlinkMessage { header: netlink_header, payload: NetlinkPayload::InnerMessage(RtnlMessage::DelLink(LinkMessage {
+            header: LinkHeader { index: 15, link_layer_type: random(), change_mask: random(), flags: random(), interface_family: random() },
+            nlas: vec![netlink_packet_route::link::nlas::Nla::IfName(String::from("SomeDevice1")), netlink_packet_route::link::nlas::Nla::OperState(State::Other(100))]
+        })) }) == Some((15, NetworkLinkStatus::new(None, String::from("SomeDevice1"), rusty_router_model::NetworkLinkOperationalState::Unknown))));
+
+        // This one logs an error message and continues.  There is nothing a user can really do here.  It really should not be possible to reach.
+        assert!(subject.process_link_message(NetlinkMessage { header: netlink_header, payload: NetlinkPayload::InnerMessage(RtnlMessage::GetLink(LinkMessage {
+            header: LinkHeader { index: 15, link_layer_type: random(), change_mask: random(), flags: random(), interface_family: random() },
+            nlas: vec![netlink_packet_route::link::nlas::Nla::IfName(String::from("SomeDevice1")), netlink_packet_route::link::nlas::Nla::OperState(State::Other(100))]
+        })) }) == None);
+
         let config = Arc::new(Router::new(vec![
             (String::from("NetworkLink1"), NetworkLink::new(String::from("Device1"), NetworkLinkType::GenericInterface)),
             (String::from("NetworkLink2"), NetworkLink::new(String::from("Device2"), NetworkLinkType::GenericInterface)),
@@ -636,6 +652,26 @@ mod tests {
             header: LinkHeader { index: 20, link_layer_type: random(), change_mask: random(), flags: random(), interface_family: random() },
             nlas: vec![netlink_packet_route::link::nlas::Nla::IfName(String::from("Device2")), netlink_packet_route::link::nlas::Nla::OperState(State::Down)]
         })) }) == Some((20, NetworkLinkStatus::new(Some(String::from("NetworkLink2")), String::from("Device2"), rusty_router_model::NetworkLinkOperationalState::Down))));
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    pub async fn test_process_address_message() -> Result<(), Box<dyn Error + Send + Sync>> {
+        let netlink_header = NetlinkHeader { sequence_number: random(), flags: random(), port_number: random(), length: random(), message_type: random() };
+
+        let config = Arc::new(Router::new(HashMap::new(), HashMap::new(), HashMap::new()));
+        let subject = NetlinkMessageProcessor::new(config);
+
+        assert!(subject.process_address_message(NetlinkMessage { header: netlink_header, payload: NetlinkPayload::InnerMessage(RtnlMessage::NewAddress(AddressMessage {
+            header: AddressHeader { index: random(), flags: random(), family: random(), prefix_len: random(), scope: random() },
+            nlas: vec![]
+        })) }) == None);
+
+        assert!(subject.process_address_message(NetlinkMessage { header: netlink_header, payload: NetlinkPayload::InnerMessage(RtnlMessage::NewAddress(AddressMessage {
+            header: AddressHeader { index: 10, flags: random(), family: netlink_packet_route::AF_INET as u8, prefix_len: 20, scope: random() },
+            nlas: vec![netlink_packet_route::address::nlas::Nla::Address(vec![1, 2, 3, 4])]
+        })) }) == Some((10, IpAddress::new(IpAddr::from_str("1.2.3.4")?, 20))));
 
         Ok(())
     }
