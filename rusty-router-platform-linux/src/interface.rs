@@ -197,7 +197,7 @@ impl CanonicalNetworkId {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 struct NetworkStatusItem<T> {
     id: CanonicalNetworkId,
     status: T,
@@ -244,7 +244,7 @@ impl InterfaceManagerWorker {
         });
     }
 
-    pub async fn poll(&self) {
+    async fn poll(&self) {
         if let Err(e) = &self.try_poll().await {
             error!("Failed to poll interfaces: {:?}", e);
         }
@@ -281,6 +281,7 @@ impl InterfaceManagerWorker {
                 network_links.insert(id, link_network_status_item.clone());
             };
         });
+
         unmapped_links.drain().for_each(|(name, device)| {
             let id = CanonicalNetworkId::new(None, Some(name.clone()), Some(device.clone()));
             let network_link_status = NetworkLinkStatus::new(Some(name.clone()), device.clone(), rusty_router_model::NetworkLinkOperationalState::NotFound);
@@ -342,6 +343,7 @@ impl InterfaceManagerWorker {
                 }
             });
         });
+
         database.take_link_status_items().into_iter().for_each(|item| {
             notify_deleted_links.push(item);
         });
@@ -571,6 +573,8 @@ mod tests {
     use std::net::IpAddr;
     use std::str::FromStr;
     use std::sync::Arc;
+    use std::sync::atomic::AtomicBool;
+    use std::sync::atomic::Ordering;
 
     use netlink_packet_core::NetlinkHeader;
     use netlink_packet_core::NetlinkMessage;
@@ -584,14 +588,18 @@ mod tests {
     use rand::random;
     use rusty_router_model::IpAddress;
     use rusty_router_model::NetworkLink;
+    use rusty_router_model::NetworkLinkOperationalState;
     use rusty_router_model::NetworkLinkStatus;
     use rusty_router_model::NetworkLinkType;
     use rusty_router_model::Router;
+    use tokio::sync::RwLock;
 
     use crate::netlink::MockNetlinkSocket;
     use crate::netlink::MockNetlinkSocketFactory;
 
     use super::InterfaceManager;
+    use super::InterfaceManagerDatabase;
+    use super::InterfaceManagerWorker;
     use super::NetlinkMessageProcessor;
 
     #[tokio::test]
@@ -688,7 +696,52 @@ mod tests {
     }
 
     #[tokio::test]
-    pub async fn test_list_empty() -> Result<(), Box<dyn Error + Send + Sync>> {
+    pub async fn test_interface_manager_worker() -> Result<(), Box<dyn Error + Send + Sync>> {
+        let config = Arc::new(Router::new(HashMap::new(), HashMap::new(), HashMap::new()));
+
+        let mut mock_netlink_socket = MockNetlinkSocket::new();
+        let netlink_message_processor = Arc::new(NetlinkMessageProcessor::new(config.clone()));
+        let config = Arc::new(Router::new(HashMap::new(), HashMap::new(), HashMap::new()));
+
+        mock_netlink_socket.expect_send_message().withf(|message| {
+            match message.payload {
+                netlink_packet_core::NetlinkPayload::InnerMessage(netlink_packet_route::RtnlMessage::GetLink(_)) => true,
+                netlink_packet_core::NetlinkPayload::InnerMessage(netlink_packet_route::RtnlMessage::GetAddress(_)) => true,
+                _ => false,
+            }
+        }).returning(|input| {
+            match input.payload {
+                netlink_packet_core::NetlinkPayload::InnerMessage(netlink_packet_route::RtnlMessage::GetLink(_)) => {
+                    let netlink_header = NetlinkHeader { sequence_number: input.header.sequence_number, flags: random(), port_number: random(), length: random(), message_type: random() };
+                    let iface = NetlinkMessage { header: netlink_header, payload: NetlinkPayload::InnerMessage(RtnlMessage::NewLink(LinkMessage {
+                        header: LinkHeader { index: 100, link_layer_type: random(), change_mask: random(), flags: random(), interface_family: random() },
+                        nlas: vec![
+                            netlink_packet_route::link::nlas::Nla::IfName(String::from("SomeDevice")),
+                            netlink_packet_route::link::nlas::Nla::OperState(State::Up),
+                        ]
+                    })) };
+                    Ok(vec![iface])
+                },
+                _ => Ok(vec![]),
+            }
+        });
+
+        let running = Arc::new(AtomicBool::new(false));
+        let database = Arc::new(RwLock::new(InterfaceManagerDatabase::new()));
+        let subject = InterfaceManagerWorker { config, running: running.clone(), database: database.clone(), netlink_socket: Arc::new(mock_netlink_socket), netlink_message_processor };
+
+        subject.poll().await;
+        running.store(false, Ordering::SeqCst);
+
+        assert!(database.read().await.list_link_status() == vec![
+            NetworkLinkStatus::new(None, String::from("SomeDevice"), NetworkLinkOperationalState::Up),
+        ]);
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    pub async fn test_interface_manager_list_empty() -> Result<(), Box<dyn Error + Send + Sync>> {
         let mut mock_netlink_socket = MockNetlinkSocket::new();
         let mut mock_netlink_socket_factory = MockNetlinkSocketFactory::new();
 
