@@ -87,7 +87,9 @@ impl InterfaceManagerDatabase {
     }
 
     pub fn list_link_status(&self) -> Vec<NetworkLinkStatus> {
-        self.network_links.iter().map(|(_, value)| value.get_status().clone()).collect()
+        let mut data: Vec<NetworkLinkStatus> = self.network_links.iter().map(|(_, value)| value.get_status().clone()).collect();
+        data.sort_by(|first, second| first.get_name().cmp(second.get_name()));
+        data
     }
 
     pub fn take_link_status_items(&mut self) -> Vec<NetworkStatusItem<NetworkLinkStatus>> {
@@ -697,7 +699,9 @@ mod tests {
 
     #[tokio::test]
     pub async fn test_interface_manager_worker() -> Result<(), Box<dyn Error + Send + Sync>> {
-        let config = Arc::new(Router::new(HashMap::new(), HashMap::new(), HashMap::new()));
+        let config = Arc::new(Router::new(vec![
+            (String::from("SomeLink2"), NetworkLink::new(String::from("SomeDevice2"), NetworkLinkType::GenericInterface)),
+        ].drain(..).collect(), HashMap::new(), HashMap::new()));
 
         let mut mock_netlink_socket = MockNetlinkSocket::new();
         let netlink_message_processor = Arc::new(NetlinkMessageProcessor::new(config.clone()));
@@ -713,14 +717,23 @@ mod tests {
             match input.payload {
                 netlink_packet_core::NetlinkPayload::InnerMessage(netlink_packet_route::RtnlMessage::GetLink(_)) => {
                     let netlink_header = NetlinkHeader { sequence_number: input.header.sequence_number, flags: random(), port_number: random(), length: random(), message_type: random() };
-                    let iface = NetlinkMessage { header: netlink_header, payload: NetlinkPayload::InnerMessage(RtnlMessage::NewLink(LinkMessage {
+
+                    let iface1 = NetlinkMessage { header: netlink_header, payload: NetlinkPayload::InnerMessage(RtnlMessage::NewLink(LinkMessage {
                         header: LinkHeader { index: 100, link_layer_type: random(), change_mask: random(), flags: random(), interface_family: random() },
                         nlas: vec![
-                            netlink_packet_route::link::nlas::Nla::IfName(String::from("SomeDevice")),
+                            netlink_packet_route::link::nlas::Nla::IfName(String::from("SomeDevice1")),
                             netlink_packet_route::link::nlas::Nla::OperState(State::Up),
                         ]
                     })) };
-                    Ok(vec![iface])
+                    let iface2 = NetlinkMessage { header: netlink_header, payload: NetlinkPayload::InnerMessage(RtnlMessage::NewLink(LinkMessage {
+                        header: LinkHeader { index: 101, link_layer_type: random(), change_mask: random(), flags: random(), interface_family: random() },
+                        nlas: vec![
+                            netlink_packet_route::link::nlas::Nla::IfName(String::from("SomeDevice2")),
+                            netlink_packet_route::link::nlas::Nla::OperState(State::Up),
+                        ]
+                    })) };
+
+                    Ok(vec![iface1, iface2])
                 },
                 _ => Ok(vec![]),
             }
@@ -733,8 +746,9 @@ mod tests {
         subject.poll().await;
         running.store(false, Ordering::SeqCst);
 
-        assert!(database.read().await.list_link_status() == vec![
-            NetworkLinkStatus::new(None, String::from("SomeDevice"), NetworkLinkOperationalState::Up),
+        assert_eq!(database.read().await.list_link_status(), vec![
+            NetworkLinkStatus::new(None, String::from("SomeDevice1"), NetworkLinkOperationalState::Up),
+            NetworkLinkStatus::new(Some(String::from("SomeLink2")), String::from("SomeDevice2"), NetworkLinkOperationalState::Up),
         ]);
 
         Ok(())
