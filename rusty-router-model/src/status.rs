@@ -59,6 +59,7 @@ pub enum NetworkLinkOperationalState {
     Down,
     Unknown,
     NotFound,
+    Misconfigured,
 }
 impl Display for NetworkLinkOperationalState {
     fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
@@ -67,6 +68,7 @@ impl Display for NetworkLinkOperationalState {
             NetworkLinkOperationalState::Down => write!(f, "Down"),
             NetworkLinkOperationalState::Unknown => write!(f, "Unknown"),
             NetworkLinkOperationalState::NotFound => write!(f, "NotFound"),
+            NetworkLinkOperationalState::Misconfigured => write!(f, "Misconfigured"),
         }
     }
 }

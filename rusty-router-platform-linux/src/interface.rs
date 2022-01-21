@@ -24,6 +24,8 @@ const ENTROPY_SCAN_PERIOD_SECONDS: u64 = 10;
  * Two mechanisms exist to maintain a list of network interface information.
  * A listener will subscribe to all networking events to ensure we have the latest information, but this can be lossy.
  * An anti-entrophy scan is carried out periodically to ensure missing or incomplete information is captured.
+ * 
+ * TODO Validate garbage config like reused devices, reused network links per interface or non-existant links.
  */
 pub struct InterfaceManager {
     running: Arc<AtomicBool>,
@@ -115,7 +117,9 @@ impl InterfaceManagerDatabase {
     }
 
     pub fn list_interface_status(&self) -> Vec<NetworkInterfaceStatus> {
-        self.network_interfaces.iter().map(|(_, value)| value.get_status().clone()).collect()
+        let mut data: Vec<NetworkInterfaceStatus> = self.network_interfaces.iter().map(|(_, value)| value.get_status().clone()).collect();
+        data.sort_by(|first, second| first.get_name().cmp(second.get_name()));
+        data
     }
 
     pub fn get_interface_status_item_by_device_index(&self, device_index: &u64) -> Option<&NetworkStatusItem<NetworkInterfaceStatus>> {
@@ -309,7 +313,8 @@ impl InterfaceManagerWorker {
                 interface_addresses.sort();
                 network_interfaces.insert(id.clone(), NetworkStatusItem::new(id, NetworkInterfaceStatus::new(Some(network_interface_name.clone()), interface_addresses, network_link.get_status().clone())));
             } else {
-                warn!("Could not match network interface '{}' to a network link '{}'.  Please check the router configuration.", network_interface_name, network_interface.get_network_link());
+                let id = CanonicalNetworkId::new(None, Some(network_interface_name.clone()), None);
+                network_interfaces.insert(id.clone(), NetworkStatusItem::new(id, NetworkInterfaceStatus::new(Some(network_interface_name.clone()), vec![], NetworkLinkStatus::new(Some(network_interface.get_network_link().clone()), String::new(), NetworkLinkOperationalState::Misconfigured))));
             }
         }
         for (index, mut addresses) in network_addresses.drain() {
@@ -589,6 +594,8 @@ mod tests {
     use netlink_packet_route::link::nlas::State;
     use rand::random;
     use rusty_router_model::IpAddress;
+    use rusty_router_model::NetworkInterface;
+    use rusty_router_model::NetworkInterfaceStatus;
     use rusty_router_model::NetworkLink;
     use rusty_router_model::NetworkLinkOperationalState;
     use rusty_router_model::NetworkLinkStatus;
@@ -698,14 +705,14 @@ mod tests {
     }
 
     #[tokio::test]
-    pub async fn test_interface_manager_worker() -> Result<(), Box<dyn Error + Send + Sync>> {
+    pub async fn test_interface_manager_worker_links() -> Result<(), Box<dyn Error + Send + Sync>> {
         let config = Arc::new(Router::new(vec![
             (String::from("SomeLink2"), NetworkLink::new(String::from("SomeDevice2"), NetworkLinkType::GenericInterface)),
+            (String::from("SomeLink3"), NetworkLink::new(String::from("SomeDevice3"), NetworkLinkType::GenericInterface)),
         ].drain(..).collect(), HashMap::new(), HashMap::new()));
 
         let mut mock_netlink_socket = MockNetlinkSocket::new();
         let netlink_message_processor = Arc::new(NetlinkMessageProcessor::new(config.clone()));
-        let config = Arc::new(Router::new(HashMap::new(), HashMap::new(), HashMap::new()));
 
         mock_netlink_socket.expect_send_message().withf(|message| {
             match message.payload {
@@ -749,6 +756,81 @@ mod tests {
         assert_eq!(database.read().await.list_link_status(), vec![
             NetworkLinkStatus::new(None, String::from("SomeDevice1"), NetworkLinkOperationalState::Up),
             NetworkLinkStatus::new(Some(String::from("SomeLink2")), String::from("SomeDevice2"), NetworkLinkOperationalState::Up),
+            NetworkLinkStatus::new(Some(String::from("SomeLink3")), String::from("SomeDevice3"), NetworkLinkOperationalState::NotFound),
+        ]);
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    pub async fn test_interface_manager_worker_interfaces() -> Result<(), Box<dyn Error + Send + Sync>> {
+        let config = Arc::new(Router::new(vec![
+            (String::from("SomeLink2"), NetworkLink::new(String::from("SomeDevice2"), NetworkLinkType::GenericInterface)),
+            (String::from("SomeLink3"), NetworkLink::new(String::from("SomeDevice3"), NetworkLinkType::GenericInterface)),
+            (String::from("SomeLink5"), NetworkLink::new(String::from("SomeDevice5"), NetworkLinkType::GenericInterface)),
+        ].drain(..).collect(), vec![
+            (String::from("SomeInterface4"), NetworkInterface::new(None, String::from("SomeLink4"), vec![])),
+            (String::from("SomeInterface5"), NetworkInterface::new(None, String::from("SomeLink5"), vec![])),
+        ].drain(..).collect(), HashMap::new()));
+
+        let mut mock_netlink_socket = MockNetlinkSocket::new();
+        let netlink_message_processor = Arc::new(NetlinkMessageProcessor::new(config.clone()));
+
+        mock_netlink_socket.expect_send_message().withf(|message| {
+            match message.payload {
+                netlink_packet_core::NetlinkPayload::InnerMessage(netlink_packet_route::RtnlMessage::GetLink(_)) => true,
+                netlink_packet_core::NetlinkPayload::InnerMessage(netlink_packet_route::RtnlMessage::GetAddress(_)) => true,
+                _ => false,
+            }
+        }).returning(|input| {
+            match input.payload {
+                netlink_packet_core::NetlinkPayload::InnerMessage(netlink_packet_route::RtnlMessage::GetLink(_)) => {
+                    let netlink_header = NetlinkHeader { sequence_number: input.header.sequence_number, flags: random(), port_number: random(), length: random(), message_type: random() };
+
+                    let iface1 = NetlinkMessage { header: netlink_header, payload: NetlinkPayload::InnerMessage(RtnlMessage::NewLink(LinkMessage {
+                        header: LinkHeader { index: 100, link_layer_type: random(), change_mask: random(), flags: random(), interface_family: random() },
+                        nlas: vec![
+                            netlink_packet_route::link::nlas::Nla::IfName(String::from("SomeDevice1")),
+                            netlink_packet_route::link::nlas::Nla::OperState(State::Up),
+                        ]
+                    })) };
+                    let iface2 = NetlinkMessage { header: netlink_header, payload: NetlinkPayload::InnerMessage(RtnlMessage::NewLink(LinkMessage {
+                        header: LinkHeader { index: 101, link_layer_type: random(), change_mask: random(), flags: random(), interface_family: random() },
+                        nlas: vec![
+                            netlink_packet_route::link::nlas::Nla::IfName(String::from("SomeDevice2")),
+                            netlink_packet_route::link::nlas::Nla::OperState(State::Up),
+                        ]
+                    })) };
+                    let iface5 = NetlinkMessage { header: netlink_header, payload: NetlinkPayload::InnerMessage(RtnlMessage::NewLink(LinkMessage {
+                        header: LinkHeader { index: 105, link_layer_type: random(), change_mask: random(), flags: random(), interface_family: random() },
+                        nlas: vec![
+                            netlink_packet_route::link::nlas::Nla::IfName(String::from("SomeDevice5")),
+                            netlink_packet_route::link::nlas::Nla::OperState(State::Down),
+                        ]
+                    })) };
+
+                    Ok(vec![iface1, iface2, iface5])
+                },
+                _ => Ok(vec![]),
+            }
+        });
+
+        let running = Arc::new(AtomicBool::new(false));
+        let database = Arc::new(RwLock::new(InterfaceManagerDatabase::new()));
+        let subject = InterfaceManagerWorker { config, running: running.clone(), database: database.clone(), netlink_socket: Arc::new(mock_netlink_socket), netlink_message_processor };
+
+        subject.poll().await;
+        running.store(false, Ordering::SeqCst);
+
+        assert_eq!(database.read().await.list_link_status(), vec![
+            NetworkLinkStatus::new(None, String::from("SomeDevice1"), NetworkLinkOperationalState::Up),
+            NetworkLinkStatus::new(Some(String::from("SomeLink2")), String::from("SomeDevice2"), NetworkLinkOperationalState::Up),
+            NetworkLinkStatus::new(Some(String::from("SomeLink3")), String::from("SomeDevice3"), NetworkLinkOperationalState::NotFound),
+            NetworkLinkStatus::new(Some(String::from("SomeLink5")), String::from("SomeDevice5"), NetworkLinkOperationalState::Down),
+        ]);
+        assert_eq!(database.read().await.list_interface_status(), vec![
+            NetworkInterfaceStatus::new(Some(String::from("SomeInterface4")), vec![], NetworkLinkStatus::new(Some(String::from("SomeLink4")), String::from(""), NetworkLinkOperationalState::Misconfigured)),
+            NetworkInterfaceStatus::new(Some(String::from("SomeInterface5")), vec![], NetworkLinkStatus::new(Some(String::from("SomeLink5")), String::from("SomeDevice5"), NetworkLinkOperationalState::Down)),
         ]);
 
         Ok(())
