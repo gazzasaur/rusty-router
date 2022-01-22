@@ -312,6 +312,9 @@ impl InterfaceManagerWorker {
                 let mut interface_addresses = network_link.get_id().id().map(|id| network_addresses.remove(&id).map_or_else(|| Vec::new(), |addresses| addresses)).map_or_else(|| Vec::new(), |addresses| addresses);
                 interface_addresses.sort();
                 network_interfaces.insert(id.clone(), NetworkStatusItem::new(id, NetworkInterfaceStatus::new(Some(network_interface_name.clone()), interface_addresses, network_link.get_status().clone())));
+            } else if let Some(network_link) = self.config.get_network_links().get(network_interface.get_network_link()) {
+                let id = CanonicalNetworkId::new(None, Some(network_interface_name.clone()), Some(network_link.get_device().clone()));
+                network_interfaces.insert(id.clone(), NetworkStatusItem::new(id, NetworkInterfaceStatus::new(Some(network_interface_name.clone()), vec![], NetworkLinkStatus::new(Some(network_interface.get_network_link().clone()), network_link.get_device().clone(), NetworkLinkOperationalState::Misconfigured))));
             } else {
                 let id = CanonicalNetworkId::new(None, Some(network_interface_name.clone()), None);
                 network_interfaces.insert(id.clone(), NetworkStatusItem::new(id, NetworkInterfaceStatus::new(Some(network_interface_name.clone()), vec![], NetworkLinkStatus::new(Some(network_interface.get_network_link().clone()), String::new(), NetworkLinkOperationalState::Misconfigured))));
@@ -768,9 +771,13 @@ mod tests {
             (String::from("SomeLink2"), NetworkLink::new(String::from("SomeDevice2"), NetworkLinkType::GenericInterface)),
             (String::from("SomeLink3"), NetworkLink::new(String::from("SomeDevice3"), NetworkLinkType::GenericInterface)),
             (String::from("SomeLink5"), NetworkLink::new(String::from("SomeDevice5"), NetworkLinkType::GenericInterface)),
+            (String::from("SomeLink6"), NetworkLink::new(String::from("SomeDevice6"), NetworkLinkType::GenericInterface)),
+            (String::from("SomeLink7"), NetworkLink::new(String::from("SomeDevice7"), NetworkLinkType::GenericInterface)),
         ].drain(..).collect(), vec![
             (String::from("SomeInterface4"), NetworkInterface::new(None, String::from("SomeLink4"), vec![])),
             (String::from("SomeInterface5"), NetworkInterface::new(None, String::from("SomeLink5"), vec![])),
+            (String::from("SomeInterface6"), NetworkInterface::new(None, String::from("SomeLink6"), vec![])),
+            (String::from("SomeInterface7"), NetworkInterface::new(None, String::from("SomeLink7"), vec![])),
         ].drain(..).collect(), HashMap::new()));
 
         let mut mock_netlink_socket = MockNetlinkSocket::new();
@@ -808,8 +815,27 @@ mod tests {
                             netlink_packet_route::link::nlas::Nla::OperState(State::Down),
                         ]
                     })) };
+                    let iface7 = NetlinkMessage { header: netlink_header, payload: NetlinkPayload::InnerMessage(RtnlMessage::NewLink(LinkMessage {
+                        header: LinkHeader { index: 107, link_layer_type: random(), change_mask: random(), flags: random(), interface_family: random() },
+                        nlas: vec![
+                            netlink_packet_route::link::nlas::Nla::IfName(String::from("SomeDevice7")),
+                            netlink_packet_route::link::nlas::Nla::OperState(State::Up),
+                        ]
+                    })) };
 
-                    Ok(vec![iface1, iface2, iface5])
+                    Ok(vec![iface1, iface2, iface5, iface7])
+                },
+                netlink_packet_core::NetlinkPayload::InnerMessage(netlink_packet_route::RtnlMessage::GetAddress(_)) => {
+                    let netlink_header = NetlinkHeader { sequence_number: input.header.sequence_number, flags: random(), port_number: random(), length: random(), message_type: random() };
+
+                    let address1 = NetlinkMessage { header: netlink_header, payload: NetlinkPayload::InnerMessage(RtnlMessage::NewAddress(AddressMessage {
+                        header: AddressHeader { index: 107, flags: random(), family: netlink_packet_route::AF_INET as u8, prefix_len: 20, scope: random() },
+                        nlas: vec![
+                            netlink_packet_route::address::nlas::Nla::Address(vec![1, 2, 3, 4]),
+                        ]
+                    })) };
+
+                    Ok(vec![address1])
                 },
                 _ => Ok(vec![]),
             }
@@ -827,10 +853,14 @@ mod tests {
             NetworkLinkStatus::new(Some(String::from("SomeLink2")), String::from("SomeDevice2"), NetworkLinkOperationalState::Up),
             NetworkLinkStatus::new(Some(String::from("SomeLink3")), String::from("SomeDevice3"), NetworkLinkOperationalState::NotFound),
             NetworkLinkStatus::new(Some(String::from("SomeLink5")), String::from("SomeDevice5"), NetworkLinkOperationalState::Down),
+            NetworkLinkStatus::new(Some(String::from("SomeLink6")), String::from("SomeDevice6"), NetworkLinkOperationalState::NotFound),
+            NetworkLinkStatus::new(Some(String::from("SomeLink7")), String::from("SomeDevice7"), NetworkLinkOperationalState::Up),
         ]);
         assert_eq!(database.read().await.list_interface_status(), vec![
             NetworkInterfaceStatus::new(Some(String::from("SomeInterface4")), vec![], NetworkLinkStatus::new(Some(String::from("SomeLink4")), String::from(""), NetworkLinkOperationalState::Misconfigured)),
             NetworkInterfaceStatus::new(Some(String::from("SomeInterface5")), vec![], NetworkLinkStatus::new(Some(String::from("SomeLink5")), String::from("SomeDevice5"), NetworkLinkOperationalState::Down)),
+            NetworkInterfaceStatus::new(Some(String::from("SomeInterface6")), vec![], NetworkLinkStatus::new(Some(String::from("SomeLink6")), String::from("SomeDevice6"), NetworkLinkOperationalState::NotFound)),
+            NetworkInterfaceStatus::new(Some(String::from("SomeInterface7")), vec![IpAddress::new(IpAddr::from_str("1.2.3.4")?, 20)], NetworkLinkStatus::new(Some(String::from("SomeLink7")), String::from("SomeDevice7"), NetworkLinkOperationalState::Up)),
         ]);
 
         Ok(())
