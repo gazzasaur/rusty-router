@@ -581,10 +581,13 @@ mod tests {
     use std::collections::HashMap;
     use std::error::Error;
     use std::net::IpAddr;
+    use std::ops::Sub;
     use std::str::FromStr;
     use std::sync::Arc;
     use std::sync::atomic::AtomicBool;
     use std::sync::atomic::Ordering;
+    use std::time::Duration;
+    use tokio::time::Instant;
 
     use netlink_packet_core::NetlinkHeader;
     use netlink_packet_core::NetlinkMessage;
@@ -606,6 +609,8 @@ mod tests {
     use rusty_router_model::Router;
     use tokio::sync::RwLock;
 
+    use crate::interface::CanonicalNetworkId;
+    use crate::interface::NetworkStatusItem;
     use crate::netlink::MockNetlinkSocket;
     use crate::netlink::MockNetlinkSocketFactory;
 
@@ -891,11 +896,13 @@ mod tests {
             (String::from("SomeLink6"), NetworkLink::new(String::from("SomeDevice6"), NetworkLinkType::GenericInterface)),
             (String::from("SomeLink7"), NetworkLink::new(String::from("SomeDevice7"), NetworkLinkType::GenericInterface)),
             (String::from("SomeLink8"), NetworkLink::new(String::from("SomeDevice8"), NetworkLinkType::GenericInterface)),
+            (String::from("SomeLink9"), NetworkLink::new(String::from("SomeDevice9"), NetworkLinkType::GenericInterface)),
         ].drain(..).collect(), vec![
             (String::from("SomeInterface4"), NetworkInterface::new(None, String::from("SomeLink4"), vec![])),
             (String::from("SomeInterface5"), NetworkInterface::new(None, String::from("SomeLink5"), vec![])),
             (String::from("SomeInterface6"), NetworkInterface::new(None, String::from("SomeLink6"), vec![])),
             (String::from("SomeInterface7"), NetworkInterface::new(None, String::from("SomeLink7"), vec![])),
+            (String::from("SomeInterface9"), NetworkInterface::new(None, String::from("SomeLink9"), vec![])),
         ].drain(..).collect(), HashMap::new()));
 
         let mut mock_netlink_socket = MockNetlinkSocket::new();
@@ -947,8 +954,15 @@ mod tests {
                             netlink_packet_route::link::nlas::Nla::OperState(State::Up),
                         ]
                     })) };
+                    let iface9 = NetlinkMessage { header: netlink_header, payload: NetlinkPayload::InnerMessage(RtnlMessage::NewLink(LinkMessage {
+                        header: LinkHeader { index: 109, link_layer_type: random(), change_mask: random(), flags: random(), interface_family: random() },
+                        nlas: vec![
+                            netlink_packet_route::link::nlas::Nla::IfName(String::from("SomeDevice9")),
+                            netlink_packet_route::link::nlas::Nla::OperState(State::Down),
+                        ]
+                    })) };
 
-                    Ok(vec![iface1, iface2, iface5, iface7, iface8])
+                    Ok(vec![iface1, iface2, iface5, iface7, iface8, iface9])
                 },
                 netlink_packet_core::NetlinkPayload::InnerMessage(netlink_packet_route::RtnlMessage::GetAddress(_)) => {
                     let netlink_header = NetlinkHeader { sequence_number: input.header.sequence_number, flags: random(), port_number: random(), length: random(), message_type: random() };
@@ -1010,8 +1024,15 @@ mod tests {
                             netlink_packet_route::link::nlas::Nla::OperState(State::Up),
                         ]
                     })) };
+                    let iface9 = NetlinkMessage { header: netlink_header, payload: NetlinkPayload::InnerMessage(RtnlMessage::NewLink(LinkMessage {
+                        header: LinkHeader { index: 109, link_layer_type: random(), change_mask: random(), flags: random(), interface_family: random() },
+                        nlas: vec![
+                            netlink_packet_route::link::nlas::Nla::IfName(String::from("SomeDevice9")),
+                            netlink_packet_route::link::nlas::Nla::OperState(State::Up),
+                        ]
+                    })) };
 
-                    Ok(vec![iface2, iface5, iface7, iface8])
+                    Ok(vec![iface2, iface5, iface7, iface8, iface9])
                 },
                 netlink_packet_core::NetlinkPayload::InnerMessage(netlink_packet_route::RtnlMessage::GetAddress(_)) => {
                     let netlink_header = NetlinkHeader { sequence_number: input.header.sequence_number, flags: random(), port_number: random(), length: random(), message_type: random() };
@@ -1040,6 +1061,18 @@ mod tests {
         let subject = InterfaceManagerWorker { config, running: running.clone(), database: database.clone(), netlink_socket: Arc::new(mock_netlink_socket), netlink_message_processor };
 
         subject.poll().await;
+
+        database.write().await.set_link_status_item(NetworkStatusItem {
+            id: CanonicalNetworkId::new(Some(109), Some(String::from("SomeLink9")), Some(String::from("SomeDevice9"))),
+            status: NetworkLinkStatus::new(Some(String::from("SomeLink9")), String::from("SomeDevice9"), NetworkLinkOperationalState::Down),
+            refreshed: Instant::now().sub(Duration::from_secs(11)),
+        });
+        database.write().await.set_interface_status_item(NetworkStatusItem {
+            id: CanonicalNetworkId::new(Some(109), Some(String::from("SomeInterface9")), Some(String::from("SomeDevice9"))),
+            status: NetworkInterfaceStatus::new(Some(String::from("SomeInterface9")), vec![], NetworkLinkStatus::new(Some(String::from("SomeLink9")), String::from("SomeDevice9"), NetworkLinkOperationalState::Down)),
+            refreshed: Instant::now().sub(Duration::from_secs(11))
+        });
+
         subject.poll().await;
         running.store(false, Ordering::SeqCst);
 
@@ -1050,6 +1083,7 @@ mod tests {
             NetworkLinkStatus::new(Some(String::from("SomeLink6")), String::from("SomeDevice6"), NetworkLinkOperationalState::NotFound),
             NetworkLinkStatus::new(Some(String::from("SomeLink7")), String::from("SomeDevice7"), NetworkLinkOperationalState::Up),
             NetworkLinkStatus::new(Some(String::from("SomeLink8")), String::from("SomeDevice8"), NetworkLinkOperationalState::Up),
+            NetworkLinkStatus::new(Some(String::from("SomeLink9")), String::from("SomeDevice9"), NetworkLinkOperationalState::Up),
         ]);
         assert_eq!(database.read().await.list_interface_status(), vec![
             NetworkInterfaceStatus::new(None, vec![IpAddress::new(IpAddr::from_str("2.3.4.5")?, 32)], NetworkLinkStatus::new(Some(String::from("SomeLink8")), String::from("SomeDevice8"), NetworkLinkOperationalState::Up)),
@@ -1057,6 +1091,7 @@ mod tests {
             NetworkInterfaceStatus::new(Some(String::from("SomeInterface5")), vec![], NetworkLinkStatus::new(Some(String::from("SomeLink5")), String::from("SomeDevice5"), NetworkLinkOperationalState::Down)),
             NetworkInterfaceStatus::new(Some(String::from("SomeInterface6")), vec![], NetworkLinkStatus::new(Some(String::from("SomeLink6")), String::from("SomeDevice6"), NetworkLinkOperationalState::NotFound)),
             NetworkInterfaceStatus::new(Some(String::from("SomeInterface7")), vec![IpAddress::new(IpAddr::from_str("1.2.3.4")?, 20)], NetworkLinkStatus::new(Some(String::from("SomeLink7")), String::from("SomeDevice7"), NetworkLinkOperationalState::Up)),
+            NetworkInterfaceStatus::new(Some(String::from("SomeInterface9")), vec![], NetworkLinkStatus::new(Some(String::from("SomeLink9")), String::from("SomeDevice9"), NetworkLinkOperationalState::Up)),
         ]);
 
         Ok(())
