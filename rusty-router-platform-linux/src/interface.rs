@@ -914,7 +914,7 @@ mod tests {
                 netlink_packet_core::NetlinkPayload::InnerMessage(netlink_packet_route::RtnlMessage::GetAddress(_)) => true,
                 _ => false,
             }
-        }).times(1).returning(|input| {
+        }).times(2).returning(|input| {
             match input.payload {
                 netlink_packet_core::NetlinkPayload::InnerMessage(netlink_packet_route::RtnlMessage::GetLink(_)) => {
                     let netlink_header = NetlinkHeader { sequence_number: input.header.sequence_number, flags: random(), port_number: random(), length: random(), message_type: random() };
@@ -961,8 +961,15 @@ mod tests {
                             netlink_packet_route::link::nlas::Nla::OperState(State::Down),
                         ]
                     })) };
+                    let iface10 = NetlinkMessage { header: netlink_header, payload: NetlinkPayload::InnerMessage(RtnlMessage::NewLink(LinkMessage {
+                        header: LinkHeader { index: 110, link_layer_type: random(), change_mask: random(), flags: random(), interface_family: random() },
+                        nlas: vec![
+                            netlink_packet_route::link::nlas::Nla::IfName(String::from("SomeDeviceA")),
+                            netlink_packet_route::link::nlas::Nla::OperState(State::Down),
+                        ]
+                    })) };
 
-                    Ok(vec![iface1, iface2, iface5, iface7, iface8, iface9])
+                    Ok(vec![iface1, iface2, iface5, iface7, iface8, iface9, iface10])
                 },
                 netlink_packet_core::NetlinkPayload::InnerMessage(netlink_packet_route::RtnlMessage::GetAddress(_)) => {
                     let netlink_header = NetlinkHeader { sequence_number: input.header.sequence_number, flags: random(), port_number: random(), length: random(), message_type: random() };
@@ -979,8 +986,14 @@ mod tests {
                             netlink_packet_route::address::nlas::Nla::Address(vec![2, 3, 4, 5]),
                         ]
                     })) };
+                    let address10 = NetlinkMessage { header: netlink_header, payload: NetlinkPayload::InnerMessage(RtnlMessage::NewAddress(AddressMessage {
+                        header: AddressHeader { index: 110, flags: random(), family: netlink_packet_route::AF_INET as u8, prefix_len: 32, scope: random() },
+                        nlas: vec![
+                            netlink_packet_route::address::nlas::Nla::Address(vec![3, 4, 5, 6]),
+                        ]
+                    })) };
 
-                    Ok(vec![address7, address8])
+                    Ok(vec![address7, address8, address10])
                 },
                 _ => Ok(vec![]),
             }
