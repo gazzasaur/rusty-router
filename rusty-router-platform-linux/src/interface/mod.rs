@@ -1,3 +1,10 @@
+mod database;
+mod model;
+
+use crate::netlink::NetlinkSocket;
+use crate::netlink::NetlinkSocketFactory;
+use crate::netlink::NetlinkSocketListener;
+
 use std::collections::HashMap;
 use std::net::{Ipv4Addr, Ipv6Addr, IpAddr};
 use std::ops::Add;
@@ -12,10 +19,10 @@ use rusty_router_model::{NetworkInterfaceStatus, NetworkLinkStatus, Router, Netw
 use tokio::sync::RwLock;
 use tokio::time::Instant;
 
-use crate::netlink::NetlinkSocket;
-use crate::netlink::NetlinkSocketFactory;
-use crate::netlink::NetlinkSocketListener;
 use crate::netlink::build_default_packet;
+
+use self::database::InterfaceManagerDatabase;
+use self::model::{NetworkStatusItem, CanonicalNetworkId};
 
 const ENTROPY_HOLD_PERIOD_SECONDS: u64 = 5;
 const ENTROPY_SCAN_PERIOD_SECONDS: u64 = 10;
@@ -55,175 +62,6 @@ impl InterfaceManager {
 impl Drop for InterfaceManager {
     fn drop(&mut self) {
         self.running.store(false, Ordering::SeqCst);
-    }
-}
-
-struct InterfaceManagerDatabase {
-    network_link_index: u64,
-    network_links_by_name: HashMap<String, u64>,
-    network_links_by_device_index: HashMap<u64, u64>,
-    network_links_by_device_name: HashMap<String, u64>,
-    network_links: HashMap<u64, NetworkStatusItem<NetworkLinkStatus>>,
-
-    network_interface_index: u64,
-    network_interfaces_by_name: HashMap<String, u64>,
-    network_interfaces_by_device_index: HashMap<u64, u64>,
-    network_interfaces_by_device_name: HashMap<String, u64>,
-    network_interfaces: HashMap<u64, NetworkStatusItem<NetworkInterfaceStatus>>,
-}
-impl InterfaceManagerDatabase {
-    pub fn new() -> InterfaceManagerDatabase {
-        InterfaceManagerDatabase {
-            network_link_index: 0,
-            network_links_by_name: HashMap::new(),
-            network_links_by_device_index: HashMap::new(),
-            network_links_by_device_name: HashMap::new(),
-            network_links: HashMap::new(),
-
-            network_interface_index: 0,
-            network_interfaces_by_name: HashMap::new(),
-            network_interfaces_by_device_index: HashMap::new(),
-            network_interfaces_by_device_name: HashMap::new(),
-            network_interfaces: HashMap::new()
-        }
-    }
-
-    pub fn list_link_status(&self) -> Vec<NetworkLinkStatus> {
-        let mut data: Vec<NetworkLinkStatus> = self.network_links.iter().map(|(_, value)| value.get_status().clone()).collect();
-        data.sort_by(|first, second| first.get_name().cmp(second.get_name()));
-        data
-    }
-
-    pub fn take_link_status_items(&mut self) -> Vec<NetworkStatusItem<NetworkLinkStatus>> {
-        self.network_link_index = 0;
-        self.network_links_by_name.clear();
-        self.network_links_by_device_name.clear();
-        self.network_links_by_device_index.clear();
-        self.network_links.drain().map(|(_, item)| item).collect()
-    }
-
-    pub fn set_link_status_item(&mut self, link: NetworkStatusItem<NetworkLinkStatus>) -> Vec<NetworkStatusItem<NetworkLinkStatus>> {
-        let mut deleted_items = Vec::new();
-        self.remove_link_status_item(link.get_id(), &mut deleted_items);
-
-        let index = self.network_link_index;
-        self.network_link_index += 1;
-
-        link.get_id().name().and_then(|name| self.network_links_by_name.insert(name.clone(), index));
-        link.get_id().id().and_then(|device_index| self.network_links_by_device_index.insert(device_index, index));
-        link.get_id().device().and_then(|device_name| self.network_links_by_device_name.insert(device_name.clone(), index));
-        self.network_links.insert(index, link);
-        deleted_items
-    }
-
-    pub fn list_interface_status(&self) -> Vec<NetworkInterfaceStatus> {
-        let mut data: Vec<NetworkInterfaceStatus> = self.network_interfaces.iter().map(|(_, value)| value.get_status().clone()).collect();
-        data.sort_by(|first, second| first.get_name().cmp(second.get_name()));
-        data
-    }
-
-    pub fn get_interface_status_item_by_device_index(&self, device_index: &u64) -> Option<&NetworkStatusItem<NetworkInterfaceStatus>> {
-        self.network_interfaces_by_device_index.get(device_index).and_then(|index| self.network_interfaces.get(index))
-    }
-
-    pub fn take_interface_status_items(&mut self) -> Vec<NetworkStatusItem<NetworkInterfaceStatus>> {
-        self.network_interface_index = 0;
-        self.network_interfaces_by_name.clear();
-        self.network_interfaces_by_device_name.clear();
-        self.network_interfaces_by_device_index.clear();
-        self.network_interfaces.drain().map(|(_, item)| item).collect()
-    }
-
-    pub fn set_interface_status_item(&mut self, interface: NetworkStatusItem<NetworkInterfaceStatus>) -> Vec<NetworkStatusItem<NetworkInterfaceStatus>> {
-        let mut deleted_items = Vec::new();
-        self.remove_interface_status_item(interface.get_id(), &mut deleted_items);
-
-        let index = self.network_interface_index;
-        self.network_interface_index += 1;
-
-        interface.get_id().name().and_then(|name| self.network_interfaces_by_name.insert(name.clone(), index));
-        interface.get_id().device().and_then(|device_name| self.network_interfaces_by_device_name.insert(device_name.clone(), index));
-        interface.get_id().id().and_then(|device_index| self.network_interfaces_by_device_index.insert(device_index, index));
-        self.network_interfaces.insert(index, interface);
-        deleted_items
-    }
-
-    pub fn remove_link_status_item(&mut self, id: &CanonicalNetworkId, deleted_items: &mut Vec<NetworkStatusItem<NetworkLinkStatus>>) {
-        id.name().and_then(|name| self.network_links_by_name.remove(name)).and_then(|index| self.network_links.remove(&index)).into_iter().for_each(|item| {
-            self.remove_link_status_item(item.get_id(), deleted_items);
-            deleted_items.push(item);
-        });
-        id.device().and_then(|name| self.network_links_by_device_name.remove(name)).and_then(|index| self.network_links.remove(&index)).into_iter().for_each(|item| {
-            self.remove_link_status_item(item.get_id(), deleted_items);
-            deleted_items.push(item);
-        });
-        id.id().and_then(|device_index| self.network_links_by_device_index.remove(&device_index)).and_then(|index| self.network_links.remove(&index)).into_iter().for_each(|item| {
-            self.remove_link_status_item(item.get_id(), deleted_items);
-            deleted_items.push(item);
-        });
-    }
-
-    pub fn remove_interface_status_item(&mut self, id: &CanonicalNetworkId, deleted_items: &mut Vec<NetworkStatusItem<NetworkInterfaceStatus>>) {
-        id.name().and_then(|name| self.network_interfaces_by_name.remove(name)).and_then(|index| self.network_interfaces.remove(&index)).into_iter().for_each(|item| {
-            self.remove_interface_status_item(item.get_id(), deleted_items);
-            deleted_items.push(item);
-        });
-        id.device().and_then(|name| self.network_interfaces_by_device_name.remove(name)).and_then(|index| self.network_interfaces.remove(&index)).into_iter().for_each(|item| {
-            self.remove_interface_status_item(item.get_id(), deleted_items);
-            deleted_items.push(item);
-        });
-        id.id().and_then(|device_index| self.network_interfaces_by_device_index.remove(&device_index)).and_then(|index| self.network_interfaces.remove(&index)).into_iter().for_each(|item| {
-            self.remove_interface_status_item(item.get_id(), deleted_items);
-            deleted_items.push(item);
-        });
-    }
-}
-
-#[derive(Clone, Debug, Hash, PartialEq, Eq)]
-struct CanonicalNetworkId {
-    id: Option<u64>,
-    name: Option<String>,
-    device: Option<String>,
-}
-impl CanonicalNetworkId {
-    fn new(id: Option<u64>, name: Option<String>, device: Option<String>) -> Self {
-        Self { id, name, device }
-    }
-
-    fn id(&self) -> Option<u64> {
-        self.id
-    }
-
-    fn name(&self) -> Option<&String> {
-        self.name.as_ref()
-    }
-
-    fn device(&self) -> Option<&String> {
-        self.device.as_ref()
-    }
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-struct NetworkStatusItem<T> {
-    id: CanonicalNetworkId,
-    status: T,
-    refreshed: Instant,
-}
-impl<T> NetworkStatusItem<T> {
-    pub fn new(id: CanonicalNetworkId, status: T) -> NetworkStatusItem<T> {
-        NetworkStatusItem { id, refreshed: Instant::now(), status }
-    }
-
-    pub fn get_refreshed(&self) -> &Instant {
-        &self.refreshed
-    }
-
-    pub fn get_id(&self) -> &CanonicalNetworkId {
-        &self.id
-    }
-
-    pub fn get_status(&self) -> &T {
-        &self.status
     }
 }
 
@@ -611,11 +449,13 @@ mod tests {
 
     use crate::interface::CanonicalNetworkId;
     use crate::interface::NetworkStatusItem;
+    use crate::interface::database::InterfaceManagerDatabase;
     use crate::netlink::MockNetlinkSocket;
     use crate::netlink::MockNetlinkSocketFactory;
+    use crate::netlink::NetlinkSocketListener;
 
     use super::InterfaceManager;
-    use super::InterfaceManagerDatabase;
+    use super::InterfaceManagerNetlinkSocketListener;
     use super::InterfaceManagerWorker;
     use super::NetlinkMessageProcessor;
 
@@ -1074,17 +914,16 @@ mod tests {
         let subject = InterfaceManagerWorker { config, running: running.clone(), database: database.clone(), netlink_socket: Arc::new(mock_netlink_socket), netlink_message_processor };
 
         subject.poll().await;
-
-        database.write().await.set_link_status_item(NetworkStatusItem {
-            id: CanonicalNetworkId::new(Some(109), Some(String::from("SomeLink9")), Some(String::from("SomeDevice9"))),
-            status: NetworkLinkStatus::new(Some(String::from("SomeLink9")), String::from("SomeDevice9"), NetworkLinkOperationalState::Down),
-            refreshed: Instant::now().sub(Duration::from_secs(11)),
-        });
-        database.write().await.set_interface_status_item(NetworkStatusItem {
-            id: CanonicalNetworkId::new(Some(109), Some(String::from("SomeInterface9")), Some(String::from("SomeDevice9"))),
-            status: NetworkInterfaceStatus::new(Some(String::from("SomeInterface9")), vec![], NetworkLinkStatus::new(Some(String::from("SomeLink9")), String::from("SomeDevice9"), NetworkLinkOperationalState::Down)),
-            refreshed: Instant::now().sub(Duration::from_secs(11))
-        });
+        database.write().await.set_link_status_item(NetworkStatusItem::new_with_refresh(
+            CanonicalNetworkId::new(Some(109), Some(String::from("SomeLink9")), Some(String::from("SomeDevice9"))),
+            NetworkLinkStatus::new(Some(String::from("SomeLink9")), String::from("SomeDevice9"), NetworkLinkOperationalState::Down),
+            Instant::now().sub(Duration::from_secs(11)),
+        ));
+        database.write().await.set_interface_status_item(NetworkStatusItem::new_with_refresh(
+            CanonicalNetworkId::new(Some(109), Some(String::from("SomeInterface9")), Some(String::from("SomeDevice9"))),
+            NetworkInterfaceStatus::new(Some(String::from("SomeInterface9")), vec![], NetworkLinkStatus::new(Some(String::from("SomeLink9")), String::from("SomeDevice9"), NetworkLinkOperationalState::Down)),
+            Instant::now().sub(Duration::from_secs(11))
+        ));
 
         subject.poll().await;
         running.store(false, Ordering::SeqCst);
@@ -1111,6 +950,28 @@ mod tests {
     }
 
     #[tokio::test]
+    pub async fn test_interface_listener() -> Result<(), Box<dyn Error + Send + Sync>> {
+        let config = Arc::new(generate_test_config());
+        let netlink_header = NetlinkHeader { sequence_number: random(), flags: random(), port_number: random(), length: random(), message_type: random() };
+        let netlink_message = NetlinkMessage { header: netlink_header, payload: NetlinkPayload::InnerMessage(RtnlMessage::NewLink(LinkMessage {
+            header: LinkHeader { index: 101, link_layer_type: random(), change_mask: random(), flags: random(), interface_family: random() },
+            nlas: vec![
+                netlink_packet_route::link::nlas::Nla::IfName(String::from("SomeDevice2")),
+                netlink_packet_route::link::nlas::Nla::OperState(State::Up),
+            ]
+        })) };
+
+        let database = Arc::new(RwLock::new(InterfaceManagerDatabase::new()));
+        database.write().await.set_link_status_item(NetworkStatusItem::new(CanonicalNetworkId::new(Some(110), None, Some(String::from("SomeDeviceA"))), NetworkLinkStatus::new(None, String::from("SomeDeviceA"), NetworkLinkOperationalState::Down)));
+        println!("{:?}", database.read().await.list_interface_status());
+
+        let subject = InterfaceManagerNetlinkSocketListener::new(Arc::new(NetlinkMessageProcessor::new(config)), database);
+        subject.message_received(netlink_message).await;
+
+        Ok(())
+    }
+    
+    #[tokio::test]
     pub async fn test_interface_manager_list_empty() -> Result<(), Box<dyn Error + Send + Sync>> {
         let mut mock_netlink_socket = MockNetlinkSocket::new();
         let mut mock_netlink_socket_factory = MockNetlinkSocketFactory::new();
@@ -1130,6 +991,24 @@ mod tests {
         assert!(subject.list_network_interfaces().await == vec![]);
 
         Ok(())
+    }
+
+    fn generate_test_config() -> Router {
+        Router::new(vec![
+            (String::from("SomeLink2"), NetworkLink::new(String::from("SomeDevice2"), NetworkLinkType::GenericInterface)),
+            (String::from("SomeLink3"), NetworkLink::new(String::from("SomeDevice3"), NetworkLinkType::GenericInterface)),
+            (String::from("SomeLink5"), NetworkLink::new(String::from("SomeDevice5"), NetworkLinkType::GenericInterface)),
+            (String::from("SomeLink6"), NetworkLink::new(String::from("SomeDevice6"), NetworkLinkType::GenericInterface)),
+            (String::from("SomeLink7"), NetworkLink::new(String::from("SomeDevice7"), NetworkLinkType::GenericInterface)),
+            (String::from("SomeLink8"), NetworkLink::new(String::from("SomeDevice8"), NetworkLinkType::GenericInterface)),
+            (String::from("SomeLink9"), NetworkLink::new(String::from("SomeDevice9"), NetworkLinkType::GenericInterface)),
+        ].drain(..).collect(), vec![
+            (String::from("SomeInterface4"), NetworkInterface::new(None, String::from("SomeLink4"), vec![])),
+            (String::from("SomeInterface5"), NetworkInterface::new(None, String::from("SomeLink5"), vec![])),
+            (String::from("SomeInterface6"), NetworkInterface::new(None, String::from("SomeLink6"), vec![])),
+            (String::from("SomeInterface7"), NetworkInterface::new(None, String::from("SomeLink7"), vec![])),
+            (String::from("SomeInterface9"), NetworkInterface::new(None, String::from("SomeLink9"), vec![])),
+        ].drain(..).collect(), HashMap::new())
     }
 
     fn expect_get_link(mock_netlink_socket: &mut MockNetlinkSocket, result: Vec<netlink_packet_core::NetlinkMessage<netlink_packet_route::RtnlMessage>>) {
@@ -1152,6 +1031,5 @@ mod tests {
             }
             Ok(result.clone())
         });
-
     }
 }
