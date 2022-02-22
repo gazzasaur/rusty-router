@@ -778,7 +778,7 @@ mod tests {
     }
 
     #[tokio::test]
-    pub async fn test_interface_listener() -> Result<(), Box<dyn Error + Send + Sync>> {
+    pub async fn test_interface_listener_new_link() -> Result<(), Box<dyn Error + Send + Sync>> {
         let config = Arc::new(generate_test_config());
         let netlink_header = NetlinkHeader { sequence_number: random(), flags: random(), port_number: random(), length: random(), message_type: random() };
         let netlink_message = NetlinkMessage { header: netlink_header, payload: NetlinkPayload::InnerMessage(RtnlMessage::NewLink(LinkMessage {
@@ -791,14 +791,98 @@ mod tests {
 
         let database = Arc::new(RwLock::new(InterfaceManagerDatabase::new()));
         database.write().await.set_link_status_item(NetworkStatusItem::new(CanonicalNetworkId::new(Some(110), None, Some(String::from("SomeDeviceA"))), NetworkLinkStatus::new(None, String::from("SomeDeviceA"), NetworkLinkOperationalState::Down)));
-        println!("{:?}", database.read().await.list_interface_status());
 
-        let subject = InterfaceManagerNetlinkSocketListener::new(Arc::new(NetlinkMessageProcessor::new(config)), database);
+        let subject = InterfaceManagerNetlinkSocketListener::new(Arc::new(NetlinkMessageProcessor::new(config)), database.clone());
         subject.message_received(netlink_message).await;
+
+        assert_eq!(database.read().await.list_link_status(), vec![
+            NetworkLinkStatus::new(None, String::from("SomeDeviceA"), NetworkLinkOperationalState::Down),
+            NetworkLinkStatus::new(Some(String::from("SomeLink2")), String::from("SomeDevice2"), NetworkLinkOperationalState::Up),
+        ]);
 
         Ok(())
     }
-    
+
+    #[tokio::test]
+    pub async fn test_interface_listener_delete_link() -> Result<(), Box<dyn Error + Send + Sync>> {
+        let config = Arc::new(generate_test_config());
+        let netlink_header = NetlinkHeader { sequence_number: random(), flags: random(), port_number: random(), length: random(), message_type: random() };
+        let netlink_message = NetlinkMessage { header: netlink_header, payload: NetlinkPayload::InnerMessage(RtnlMessage::DelLink(LinkMessage {
+            header: LinkHeader { index: 101, link_layer_type: random(), change_mask: random(), flags: random(), interface_family: random() },
+            nlas: vec![
+                netlink_packet_route::link::nlas::Nla::IfName(String::from("SomeDevice2")),
+                netlink_packet_route::link::nlas::Nla::OperState(State::Up),
+            ]
+        })) };
+
+        let database = Arc::new(RwLock::new(InterfaceManagerDatabase::new()));
+        database.write().await.set_link_status_item(NetworkStatusItem::new(CanonicalNetworkId::new(Some(110), None, Some(String::from("SomeDeviceA"))), NetworkLinkStatus::new(None, String::from("SomeDeviceA"), NetworkLinkOperationalState::Down)));
+        database.write().await.set_link_status_item(NetworkStatusItem::new(CanonicalNetworkId::new(Some(101), Some(String::from("SomeLink2")), Some(String::from("SomeDevice2"))), NetworkLinkStatus::new(Some(String::from("SomeLink2")), String::from("SomeDevice2"), NetworkLinkOperationalState::Up)));
+
+        let subject = InterfaceManagerNetlinkSocketListener::new(Arc::new(NetlinkMessageProcessor::new(config)), database.clone());
+        subject.message_received(netlink_message).await;
+
+        assert_eq!(database.read().await.list_link_status(), vec![
+            NetworkLinkStatus::new(None, String::from("SomeDeviceA"), NetworkLinkOperationalState::Down),
+            NetworkLinkStatus::new(Some(String::from("SomeLink2")), String::from("SomeDevice2"), NetworkLinkOperationalState::NotFound),
+        ]);
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    pub async fn test_interface_listener_remove_link() -> Result<(), Box<dyn Error + Send + Sync>> {
+        let config = Arc::new(generate_test_config());
+        let netlink_header = NetlinkHeader { sequence_number: random(), flags: random(), port_number: random(), length: random(), message_type: random() };
+        let netlink_message = NetlinkMessage { header: netlink_header, payload: NetlinkPayload::InnerMessage(RtnlMessage::DelLink(LinkMessage {
+            header: LinkHeader { index: 101, link_layer_type: random(), change_mask: random(), flags: random(), interface_family: random() },
+            nlas: vec![
+                netlink_packet_route::link::nlas::Nla::IfName(String::from("SomeDeviceA")),
+                netlink_packet_route::link::nlas::Nla::OperState(State::Down),
+            ]
+        })) };
+
+        let database = Arc::new(RwLock::new(InterfaceManagerDatabase::new()));
+        database.write().await.set_link_status_item(NetworkStatusItem::new(CanonicalNetworkId::new(Some(110), None, Some(String::from("SomeDeviceA"))), NetworkLinkStatus::new(None, String::from("SomeDeviceA"), NetworkLinkOperationalState::Down)));
+        database.write().await.set_link_status_item(NetworkStatusItem::new(CanonicalNetworkId::new(Some(101), Some(String::from("SomeLink2")), Some(String::from("SomeDevice2"))), NetworkLinkStatus::new(Some(String::from("SomeLink2")), String::from("SomeDevice2"), NetworkLinkOperationalState::Up)));
+
+        let subject = InterfaceManagerNetlinkSocketListener::new(Arc::new(NetlinkMessageProcessor::new(config)), database.clone());
+        subject.message_received(netlink_message).await;
+
+        assert_eq!(database.read().await.list_link_status(), vec![
+            NetworkLinkStatus::new(Some(String::from("SomeLink2")), String::from("SomeDevice2"), NetworkLinkOperationalState::Up),
+        ]);
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    pub async fn test_interface_listener_update_link() -> Result<(), Box<dyn Error + Send + Sync>> {
+        let config = Arc::new(generate_test_config());
+        let netlink_header = NetlinkHeader { sequence_number: random(), flags: random(), port_number: random(), length: random(), message_type: random() };
+        let netlink_message = NetlinkMessage { header: netlink_header, payload: NetlinkPayload::InnerMessage(RtnlMessage::NewLink(LinkMessage {
+            header: LinkHeader { index: 101, link_layer_type: random(), change_mask: random(), flags: random(), interface_family: random() },
+            nlas: vec![
+                netlink_packet_route::link::nlas::Nla::IfName(String::from("SomeDevice2")),
+                netlink_packet_route::link::nlas::Nla::OperState(State::Down),
+            ]
+        })) };
+
+        let database = Arc::new(RwLock::new(InterfaceManagerDatabase::new()));
+        database.write().await.set_link_status_item(NetworkStatusItem::new(CanonicalNetworkId::new(Some(110), None, Some(String::from("SomeDeviceA"))), NetworkLinkStatus::new(None, String::from("SomeDeviceA"), NetworkLinkOperationalState::Down)));
+        database.write().await.set_link_status_item(NetworkStatusItem::new(CanonicalNetworkId::new(Some(101), Some(String::from("SomeLink2")), Some(String::from("SomeDevice2"))), NetworkLinkStatus::new(Some(String::from("SomeLink2")), String::from("SomeDevice2"), NetworkLinkOperationalState::Up)));
+
+        let subject = InterfaceManagerNetlinkSocketListener::new(Arc::new(NetlinkMessageProcessor::new(config)), database.clone());
+        subject.message_received(netlink_message).await;
+
+        assert_eq!(database.read().await.list_link_status(), vec![
+            NetworkLinkStatus::new(None, String::from("SomeDeviceA"), NetworkLinkOperationalState::Down),
+            NetworkLinkStatus::new(Some(String::from("SomeLink2")), String::from("SomeDevice2"), NetworkLinkOperationalState::Down),
+        ]);
+
+        Ok(())
+    }
+
     #[tokio::test]
     pub async fn test_interface_manager_list_empty() -> Result<(), Box<dyn Error + Send + Sync>> {
         let mut mock_netlink_socket = MockNetlinkSocket::new();
