@@ -920,6 +920,34 @@ mod tests {
     }
 
     #[tokio::test]
+    pub async fn test_interface_listener_delete_address() -> Result<(), Box<dyn Error + Send + Sync>> {
+        let config = Arc::new(generate_test_config());
+        let netlink_header = NetlinkHeader { sequence_number: random(), flags: random(), port_number: random(), length: random(), message_type: random() };
+        let netlink_message = NetlinkMessage { header: netlink_header, payload: NetlinkPayload::InnerMessage(RtnlMessage::DelAddress(AddressMessage {
+            header: AddressHeader { index: 101, flags: random(), family: netlink_packet_route::AF_INET as u8, prefix_len: 24, scope: random() },
+            nlas: vec![
+                netlink_packet_route::address::nlas::Nla::Address(vec![192, 168, 1, 1]),
+            ]
+        })) };
+
+        let database = Arc::new(RwLock::new(InterfaceManagerDatabase::new()));
+        database.write().await.set_link_status_item(NetworkStatusItem::new(CanonicalNetworkId::new(Some(101), Some(String::from("SomeLink2")), Some(String::from("SomeDevice2"))), NetworkLinkStatus::new(Some(String::from("SomeLink2")), String::from("SomeDevice2"), NetworkLinkOperationalState::Up)));
+        database.write().await.set_interface_status_item(NetworkStatusItem::new(CanonicalNetworkId::new(Some(101), Some(String::from("SomeLink2")), Some(String::from("SomeInterface2"))), NetworkInterfaceStatus::new(Some(String::from("NetworkInterface2")), vec![], NetworkLinkStatus::new(Some(String::from("SomeLink2")), String::from("SomeDevice2"), NetworkLinkOperationalState::Up))));
+
+        let subject = InterfaceManagerNetlinkSocketListener::new(Arc::new(NetlinkMessageProcessor::new(config)), database.clone());
+        subject.message_received(netlink_message).await;
+
+        assert_eq!(database.read().await.list_link_status(), vec![
+            NetworkLinkStatus::new(Some(String::from("SomeLink2")), String::from("SomeDevice2"), NetworkLinkOperationalState::Up),
+        ]);
+        assert_eq!(database.read().await.list_interface_status(), vec![
+            NetworkInterfaceStatus::new(Some(String::from("NetworkInterface2")), vec![], NetworkLinkStatus::new(Some(String::from("SomeLink2")), String::from("SomeDevice2"), NetworkLinkOperationalState::Up)),
+        ]);
+
+        Ok(())
+    }
+
+    #[tokio::test]
     pub async fn test_interface_manager_list_empty() -> Result<(), Box<dyn Error + Send + Sync>> {
         let mut mock_netlink_socket = MockNetlinkSocket::new();
         let mut mock_netlink_socket_factory = MockNetlinkSocketFactory::new();
