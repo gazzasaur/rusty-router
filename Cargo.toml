@@ -1,6 +1,8 @@
 [workspace]
 
 members = [
+    "rusty-router-common",
+    
     "rusty-router",
     "rusty-router-model",
     "rusty-router-platform-linux",
@@ -9,3 +11,19 @@ members = [
     "rusty-router-proto-ospfv2",
     "rusty-router-proto-ip",
 ]
+
+[workspace.dependencies]
+log = "0"
+rand = "0"
+chrono = "0"
+thiserror = "1"
+serde_json = "1"
+async-trait = "0"
+uuid = { version = "1", features = ["v4"] }
+tokio = { version = "1", features = ["full"] }
+serde = { version = "1", features = ["derive"] }
+
+anyhow = "1"
+mockall = "0"
+tokio-test = "0"
+lazy_static = "1"
