@@ -13,7 +13,10 @@ members = [
 ]
 
 [workspace.dependencies]
+rusty-router-common = { path = "./rusty-router-common" }
+
 log = "0"
+nix = "0"
 rand = "0"
 chrono = "0"
 thiserror = "1"

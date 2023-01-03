@@ -10,7 +10,7 @@ use std::collections::HashMap;
 use std::ops::Add;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
-use std::{sync::Arc, error::Error};
+use std::sync::Arc;
 
 use log::error;
 use async_trait::async_trait;
@@ -22,6 +22,8 @@ use crate::netlink::build_default_packet;
 
 use self::database::InterfaceManagerDatabase;
 use self::model::{NetworkStatusItem, CanonicalNetworkId};
+
+use rusty_router_common::prelude::*;
 
 const ENTROPY_HOLD_PERIOD_SECONDS: u64 = 5;
 const ENTROPY_SCAN_PERIOD_SECONDS: u64 = 10;
@@ -38,7 +40,7 @@ pub struct InterfaceManager {
     database: Arc<RwLock<InterfaceManagerDatabase>>,
 }
 impl InterfaceManager {
-    pub async fn new(config: Arc<Router>, netlink_socket_factory: Arc<dyn NetlinkSocketFactory + Send + Sync>) -> Result<InterfaceManager, Box<dyn Error + Send + Sync>> {
+    pub async fn new(config: Arc<Router>, netlink_socket_factory: Arc<dyn NetlinkSocketFactory + Send + Sync>) -> Result<InterfaceManager> {
         let running = Arc::new(AtomicBool::new(true));
         let database = Arc::new(RwLock::new(InterfaceManagerDatabase::new()));
         let interface_manaer = InterfaceManager { running: running.clone(), database: database.clone() };
@@ -95,7 +97,7 @@ impl InterfaceManagerWorker {
 
     // This will not debounce interfaces that are deleted and re-created outside this router.
     // However, this is (likely) a deliberate action and will be left out of scope of this router, for now.
-    async fn try_poll(&self) -> Result<(), Box<dyn Error + Send + Sync>> {
+    async fn try_poll(&self) -> Result<()> {
         let link_message = netlink_packet_route::RtnlMessage::GetLink(netlink_packet_route::LinkMessage::default());
         let address_message = netlink_packet_route::RtnlMessage::GetAddress(netlink_packet_route::AddressMessage::default());
         let mut link_data = self.netlink_socket.send_message(build_default_packet(link_message)).await?;

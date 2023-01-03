@@ -1,8 +1,8 @@
 use std::net::Ipv4Addr;
 use std::sync::Arc;
-use std::error::Error;
 use async_trait::async_trait;
 use interface::InterfaceManager;
+use rusty_router_common::prelude::*;
 
 use rusty_router_model::{InetPacketNetworkInterface, NetworkEventHandler, NetworkInterfaceStatus, RustyRouter};
 use rusty_router_model::RustyRouterInstance;
@@ -17,13 +17,13 @@ pub struct LinuxRustyRouter {
     platform: Arc<LinuxRustyRouterPlatform>,
 }
 impl LinuxRustyRouter {
-    pub async fn new(config: rusty_router_model::Router, netlink_socket_factory: Arc<dyn netlink::NetlinkSocketFactory + Send + Sync>) -> Result<LinuxRustyRouter, Box<dyn Error + Send + Sync>> {
+    pub async fn new(config: rusty_router_model::Router, netlink_socket_factory: Arc<dyn netlink::NetlinkSocketFactory + Send + Sync>) -> Result<LinuxRustyRouter> {
         Ok(LinuxRustyRouter { platform: Arc::new(LinuxRustyRouterPlatform::new(config, netlink_socket_factory).await?) })
     }
 }
 #[async_trait]
 impl RustyRouter for LinuxRustyRouter {
-    async fn fetch_instance(&self) -> Result<Box<dyn RustyRouterInstance + Send + Sync>, Box<dyn Error + Send + Sync>> {
+    async fn fetch_instance(&self) -> Result<Box<dyn RustyRouterInstance + Send + Sync>> {
         Ok(Box::new(LinuxRustyRouterInstance::new(self.platform.clone())))
     }
 }
@@ -38,15 +38,15 @@ impl LinuxRustyRouterInstance {
 }
 #[async_trait]
 impl RustyRouterInstance for LinuxRustyRouterInstance {
-    async fn list_network_links(&self) -> Result<Vec<rusty_router_model::NetworkLinkStatus>, Box<dyn Error + Send + Sync>> {
+    async fn list_network_links(&self) -> Result<Vec<rusty_router_model::NetworkLinkStatus>> {
         Ok(self.platform.list_network_links().await?)
     }
 
-    async fn list_network_interfaces(&self) -> Result<Vec<rusty_router_model::NetworkInterfaceStatus>, Box<dyn Error + Send + Sync>> {
+    async fn list_network_interfaces(&self) -> Result<Vec<rusty_router_model::NetworkInterfaceStatus>> {
         Ok(self.platform.list_network_interfaces().await?)
     }
 
-    async fn connect_ipv4(&self, network_interface: &String, protocol: i32, multicast_groups: Vec<Ipv4Addr>, handler: Box<dyn NetworkEventHandler + Send + Sync>) -> Result<Box<dyn InetPacketNetworkInterface + Send + Sync>, Box<dyn Error + Send + Sync>> {
+    async fn connect_ipv4(&self, network_interface: &String, protocol: i32, multicast_groups: Vec<Ipv4Addr>, handler: Box<dyn NetworkEventHandler + Send + Sync>) -> Result<Box<dyn InetPacketNetworkInterface + Send + Sync>> {
         Ok(self.platform.connect_ipv4(network_interface, protocol, multicast_groups, handler).await?)
     }
 }
@@ -56,7 +56,7 @@ struct LinuxRustyRouterPlatform {
     interface_manager: InterfaceManager,
 }
 impl LinuxRustyRouterPlatform {
-    pub async fn new(config: rusty_router_model::Router, netlink_socket_factory: Arc<dyn netlink::NetlinkSocketFactory + Send + Sync>) -> Result<LinuxRustyRouterPlatform, Box<dyn Error + Send + Sync>> {
+    pub async fn new(config: rusty_router_model::Router, netlink_socket_factory: Arc<dyn netlink::NetlinkSocketFactory + Send + Sync>) -> Result<LinuxRustyRouterPlatform> {
         let config = Arc::new(config);
         Ok(LinuxRustyRouterPlatform {
             interface_manager: InterfaceManager::new(config.clone(), netlink_socket_factory).await?,
@@ -66,17 +66,17 @@ impl LinuxRustyRouterPlatform {
 }
 #[async_trait]
 impl RustyRouterInstance for LinuxRustyRouterPlatform {
-    async fn list_network_links(&self) -> Result<Vec<rusty_router_model::NetworkLinkStatus>, Box<dyn Error + Send + Sync>> {
+    async fn list_network_links(&self) -> Result<Vec<rusty_router_model::NetworkLinkStatus>> {
         Ok(self.interface_manager.list_network_links().await)
     }
 
-    async fn list_network_interfaces(&self) -> Result<Vec<rusty_router_model::NetworkInterfaceStatus>, Box<dyn Error + Send + Sync>> {
+    async fn list_network_interfaces(&self) -> Result<Vec<rusty_router_model::NetworkInterfaceStatus>> {
         Ok(self.interface_manager.list_network_interfaces().await)
     }
 
     // This pulls all interfaces and filters down.  This is not expected to occur often, but this is expensive.
     // TODO Store the interfaces on the platform.  Subscribe to changes for updates and run anti-entrophy polls.
-    async fn connect_ipv4(&self, network_interface: &String, protocol: i32, multicast_groups: Vec<Ipv4Addr>, handler: Box<dyn NetworkEventHandler + Send + Sync>) -> Result<Box<dyn InetPacketNetworkInterface + Send + Sync>, Box<dyn Error + Send + Sync>> {
+    async fn connect_ipv4(&self, network_interface: &String, protocol: i32, multicast_groups: Vec<Ipv4Addr>, handler: Box<dyn NetworkEventHandler + Send + Sync>) -> Result<Box<dyn InetPacketNetworkInterface + Send + Sync>> {
         let network_interface: String = network_interface.clone();
         let mut interfaces: Vec<String> = self.list_network_interfaces().await?.drain(..).filter(|interface| {
             // A warning is already emitted if more than one interface with the same name exists
@@ -90,7 +90,7 @@ impl RustyRouterInstance for LinuxRustyRouterPlatform {
 
         match interfaces.pop() {
             Some(device) => return Ok(Box::new(LinuxInetPacketNetworkInterface::new(device, protocol, multicast_groups, handler, &self.network_poller).await?)),
-            None => return Err(Box::from(anyhow::anyhow!("Failed to find a device matching {}", network_interface))),
+            None => return Err(Error::IllegalState(format!("Failed to find a device matching {}", network_interface))),
         }
     }
 }

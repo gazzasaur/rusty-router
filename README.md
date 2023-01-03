@@ -84,3 +84,13 @@ RUST_BACKTRACE=1; cargo tarpaulin --ignore-tests
   * RSVP-TE (MPLS)
 * Other
   * IS-IS
+
+### Running the application
+
+The router requires cap_net_raw and cap_net_admin permissions to control and bind to network interfaces.
+The security implications are that this grants the process the ability to sniff traffic. However, the permission is unavoidable for a routing process."
+
+As an example, to set the permissions on the cargo build binary.
+```
+sudo setcap 'CAP_NET_RAW,CAP_NET_ADMIN+ep' target/debug/rusty-router
+```
