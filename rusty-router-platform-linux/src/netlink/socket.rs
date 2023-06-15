@@ -6,11 +6,10 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
-use netlink_packet_core::{self, DecodeError};
+use netlink_packet_core::{self, NetlinkMessage, NLM_F_DUMP, NLM_F_REQUEST};
 use netlink_packet_route;
-use netlink_packet_route::constants;
-use netlink_sys;
-use netlink_sys::protocols;
+
+use netlink_sys::{protocols::NETLINK_ROUTE, AsyncSocket, AsyncSocketExt, SocketAddr, TokioSocket};
 
 use rusty_router_common::prelude::*;
 
@@ -27,9 +26,6 @@ use mockall::*;
 pub enum RecvLoopError {
     #[error("Timeout waiting on data from socket")]
     RecvLoopTimeout,
-
-    #[error("Error while receiving netlink payload {0}")]
-    DeserializeError(DecodeError),
 
     #[error("Io Error: {0} - {1}")]
     Io(#[source] std::io::Error, String),
@@ -101,28 +97,32 @@ pub enum RecvState {
 
 pub struct DefaultNetlinkSocket {
     running: Arc<AtomicBool>,
-    socket: Arc<Mutex<netlink_sys::TokioSocket>>,
+    socket: Arc<Mutex<TokioSocket>>,
 }
 impl DefaultNetlinkSocket {
     pub fn new(
         listener: Box<dyn NetlinkSocketListener + Send + Sync>,
     ) -> Result<DefaultNetlinkSocket> {
-        let mut socket = netlink_sys::TokioSocket::new(protocols::NETLINK_ROUTE)
+        let mut socket = TokioSocket::new(NETLINK_ROUTE)
             .map_err(|e| Error::Io(e, "New NETLINK_ROUTE".into()))?;
         socket
+            .socket_mut()
             .bind_auto()
             .map_err(|e| Error::Io(e, "Bind NETLINK_ROUTE".into()))?;
         socket
-            .connect(&netlink_sys::SocketAddr::new(0, 0))
+            .socket_ref()
+            .connect(&SocketAddr::new(0, 0))
             .map_err(|e| Error::Io(e, "Connect NETLINK_ROUTE".into()))?;
 
-        let mut multicast_socket = netlink_sys::TokioSocket::new(protocols::NETLINK_ROUTE)
+        let mut multicast_socket = TokioSocket::new(NETLINK_ROUTE)
             .map_err(|e| Error::Io(e, "New NETLINK_ROUTE".into()))?;
         multicast_socket
-            .bind(&netlink_sys::SocketAddr::new(0, 0xFFFF))
+            .socket_mut()
+            .bind(&SocketAddr::new(0, 0xFFFF))
             .map_err(|e| Error::Io(e, "Bind NETLINK_ROUTE".into()))?;
         multicast_socket
-            .connect(&netlink_sys::SocketAddr::new(0, 0))
+            .socket_ref()
+            .connect(&SocketAddr::new(0, 0))
             .map_err(|e| Error::Io(e, "Connect NETLINK_ROUTE".into()))?;
 
         let running = Arc::new(AtomicBool::new(true));
@@ -144,7 +144,7 @@ impl DefaultNetlinkSocket {
     async fn recv_multicast_messages(
         running: Arc<AtomicBool>,
         listener: Box<dyn NetlinkSocketListener + Send + Sync>,
-        multicast_socket: Arc<Mutex<netlink_sys::TokioSocket>>,
+        multicast_socket: Arc<Mutex<TokioSocket>>,
     ) {
         // let mut receive_buffer = vec![0; (2 as usize).pow(16)];
 
@@ -153,7 +153,7 @@ impl DefaultNetlinkSocket {
             // let data_future = lock.recv(&mut receive_buffer[..]);
 
             let mut messages = Vec::new();
-            match DefaultNetlinkSocket::recv_loop(None, &false, &mut lock, |packet| {
+            match DefaultNetlinkSocket::recv_loop(None, &mut lock, |packet| {
                 messages.push(packet);
             })
             .await
@@ -167,24 +167,17 @@ impl DefaultNetlinkSocket {
         }
     }
 
-    /// Wait until done should typically be true unless using multicast sockets.
     async fn recv_loop(
         sequence_number: Option<u32>,
-        wait_until_done: &bool,
-        socket: &mut netlink_sys::TokioSocket,
+        socket: &mut TokioSocket,
         mut callback: impl FnMut(
             netlink_packet_core::NetlinkMessage<netlink_packet_route::RtnlMessage>,
         ) -> (),
     ) -> Result<RecvState> {
-        // Allocating 32k of memory each call.  This could be passed at the cost of locking.
-        let mut receive_buffer = vec![0; (2 as usize).pow(16)];
-
-        // It is possible that we filled the buffer but there is more to read.
         loop {
-            let mut offset = 0;
             let recv_result = if let Ok(recv_result) = tokio::time::timeout(
                 std::time::Duration::from_millis(1000),
-                socket.recv(&mut receive_buffer[..]),
+                socket.recv_from_full(),
             )
             .await
             {
@@ -193,40 +186,27 @@ impl DefaultNetlinkSocket {
                 return Ok(RecvState::Timeout);
             };
 
-            let size = match recv_result {
-                Ok(size) => size,
-                Err(_) => 0 as usize,
+            let (receive_buffer, _) = if let Ok(recv_result) = recv_result {
+                recv_result
+            } else {
+                continue;
             };
 
-            // It is possible that we have many messages in our buffer.  Process all of them.
-            loop {
-                let bytes = &receive_buffer[offset..];
-                let rx_packet: netlink_packet_core::NetlinkMessage<
-                    netlink_packet_route::RtnlMessage,
-                > = netlink_packet_route::NetlinkMessage::deserialize(bytes).map_err(|e| {
-                    Error::Communication(format!("Failed to deserialize netlink message: {:?}", e))
-                })?;
-                let packet_length = rx_packet.header.length as usize;
-                let packet_sequence_number = rx_packet.header.sequence_number;
+            let rx_packet: netlink_packet_core::NetlinkMessage<
+                netlink_packet_route::RtnlMessage,
+            > = NetlinkMessage::deserialize(&receive_buffer).map_err(|e| {
+                Error::Communication(format!("Failed to deserialize netlink message: {:?}", e))
+            })?;
+            let packet_sequence_number = rx_packet.header.sequence_number;
 
-                if sequence_number
-                    .map(|sequence_number| packet_sequence_number == sequence_number)
-                    .unwrap_or(true)
-                {
-                    if rx_packet.payload == netlink_packet_core::NetlinkPayload::Done {
-                        return Ok(RecvState::Received);
-                    }
-                    callback(rx_packet);
-                }
-
-                offset += packet_length;
-                if (offset == size || packet_length == 0) && !wait_until_done {
+            if sequence_number
+                .map(|sequence_number| packet_sequence_number == sequence_number)
+                .unwrap_or(true)
+            {
+                if rx_packet.payload == netlink_packet_core::NetlinkPayload::Done {
                     return Ok(RecvState::Received);
-                } else if offset == size || packet_length == 0 {
-                    break;
-                } else if offset > size {
-                    warn!("Netlink offset exceeds the packet size.");
                 }
+                callback(rx_packet);
             }
         }
     }
@@ -248,7 +228,7 @@ impl NetlinkSocket for DefaultNetlinkSocket {
             .map_err(|e| Error::Io(e, "Netlink Socket Send".into()))?;
 
         let mut received_messages = Vec::new();
-        DefaultNetlinkSocket::recv_loop(Some(sequence_number), &true, &mut socket, |rx_packet| {
+        DefaultNetlinkSocket::recv_loop(Some(sequence_number), &mut socket, |rx_packet| {
             received_messages.push(rx_packet);
         })
         .await?;
@@ -264,11 +244,8 @@ impl Drop for DefaultNetlinkSocket {
 pub fn build_default_packet(
     message: netlink_packet_route::RtnlMessage,
 ) -> netlink_packet_core::NetlinkMessage<netlink_packet_route::RtnlMessage> {
-    let mut packet = netlink_packet_core::NetlinkMessage {
-        header: netlink_packet_core::NetlinkHeader::default(),
-        payload: netlink_packet_core::NetlinkPayload::from(message),
-    };
-    packet.header.flags = constants::NLM_F_DUMP | constants::NLM_F_REQUEST;
+    let mut packet = netlink_packet_core::NetlinkMessage::from(message);
+    packet.header.flags = NLM_F_DUMP | NLM_F_REQUEST;
     packet.header.sequence_number = rand::thread_rng().gen();
     packet.finalize();
 

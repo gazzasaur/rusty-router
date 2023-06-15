@@ -40,7 +40,7 @@ impl LinuxInetPacketNetworkInterface {
                 sock.get(),
                 nix::sys::socket::sockopt::IpAddMembership,
                 &IpMembershipRequest::new(
-                    nix::sys::socket::Ipv4Addr::from_std(&multicast_group),
+                    multicast_group,
                     None,
                 ),
             )
@@ -99,14 +99,14 @@ impl PollerListener for LinuxInetPacketNetworkInterfacePollerListener {
         loop {
             match nix::sys::socket::recv(self.sock.get(), &mut buffer, MsgFlags::empty()) {
                 Ok(size) => self.handler.on_recv(buffer[0..size].to_vec()).await,
-                Err(nix::Error::Sys(nix::errno::Errno::EAGAIN)) => return,
-                Err(nix::Error::Sys(errno)) => {
+                Err(nix::errno::Errno::EAGAIN) => return,
+                Err(nix::errno::Errno::UnknownErrno) => {
+                    error!("Failed to read from socket: Unknown Error")
+                }
+                Err(errno) => {
                     self.handler
                         .on_error(format!("Failed to read from socket: {}", errno))
                         .await
-                }
-                Err(e) => {
-                    error!("Failed to read from socket: {:?}", e)
                 }
             }
         }
@@ -315,12 +315,9 @@ mod test {
 
                         // self.socket_handler.on_recv(buffer[0..size].to_vec()).await
                     }
-                    Err(nix::Error::Sys(nix::errno::Errno::EAGAIN)) => return,
-                    Err(nix::Error::Sys(errno)) => {
+                    Err(nix::errno::Errno::EAGAIN) => return,
+                    Err(errno) => {
                         println!("Failed to read from socket: {}", errno)
-                    }
-                    Err(e) => {
-                        error!("Failed to read from socket: {:?}", e)
                     }
                 }
             }

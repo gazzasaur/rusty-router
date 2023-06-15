@@ -141,5 +141,8 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
         println!();
     };
 
+    let ten_millis = std::time::Duration::from_millis(10000);
+    std::thread::sleep(ten_millis);
+
     Ok(())
 }

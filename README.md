@@ -94,3 +94,8 @@ As an example, to set the permissions on the cargo build binary.
 ```
 sudo setcap 'CAP_NET_RAW,CAP_NET_ADMIN+ep' target/debug/rusty-router
 ```
+
+To run this with build
+```
+cargo build && sudo setcap cap_net_raw,cap_net_admin+eip target/debug/rusty-router && cargo run
+```
