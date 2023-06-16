@@ -8,7 +8,7 @@ use rusty_router_model::RustyRouter;
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
     env_logger::init();
-    
+
     // Check the effective set for required capabilitites.
     // Do not attempt to raise these as it must be done per thread, which we are not going to do in the tokio runtime.
     // TODO Manage Tokio runtimes so capabilities may be reliably raised or dropped.
@@ -140,9 +140,6 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
         });
         println!();
     };
-
-    let ten_millis = std::time::Duration::from_millis(10000);
-    std::thread::sleep(ten_millis);
 
     Ok(())
 }

@@ -167,6 +167,7 @@ impl DefaultNetlinkSocket {
         }
     }
 
+     // TODO This is a little dangerous. Need to prevent infinite loops.
     async fn recv_loop(
         sequence_number: Option<u32>,
         socket: &mut TokioSocket,
@@ -192,21 +193,30 @@ impl DefaultNetlinkSocket {
                 continue;
             };
 
-            let rx_packet: netlink_packet_core::NetlinkMessage<
-                netlink_packet_route::RtnlMessage,
-            > = NetlinkMessage::deserialize(&receive_buffer).map_err(|e| {
-                Error::Communication(format!("Failed to deserialize netlink message: {:?}", e))
-            })?;
-            let packet_sequence_number = rx_packet.header.sequence_number;
+            let mut offset = 0u32;
+            loop {
+                let rx_packet: netlink_packet_core::NetlinkMessage<
+                    netlink_packet_route::RtnlMessage,
+                > = NetlinkMessage::deserialize(&receive_buffer[(offset as usize)..]).map_err(|e| {
+                    Error::Communication(format!("Failed to deserialize netlink message: {:?}", e))
+                })?;
+                let packet_length = rx_packet.header.length;
+                let packet_sequence_number = rx_packet.header.sequence_number;
 
-            if sequence_number
-                .map(|sequence_number| packet_sequence_number == sequence_number)
-                .unwrap_or(true)
-            {
-                if rx_packet.payload == netlink_packet_core::NetlinkPayload::Done {
-                    return Ok(RecvState::Received);
+                if sequence_number
+                    .map(|sequence_number| packet_sequence_number == sequence_number)
+                    .unwrap_or(true)
+                {
+                    if rx_packet.payload == netlink_packet_core::NetlinkPayload::Done {
+                        return Ok(RecvState::Received);
+                    }
+                    callback(rx_packet);
                 }
-                callback(rx_packet);
+
+                offset += packet_length;
+                if (offset as usize) == receive_buffer.len() {
+                    break;
+                }
             }
         }
     }
