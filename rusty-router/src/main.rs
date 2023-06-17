@@ -1,9 +1,23 @@
+use async_trait::async_trait;
 use env_logger;
 use log::{error, warn};
-use std::error::Error;
+use std::{error::Error, net::Ipv4Addr};
 use std::sync::Arc;
 use std::collections::HashMap;
-use rusty_router_model::RustyRouter;
+use rusty_router_model::{RustyRouter, NetworkEventHandler};
+
+struct Nih {
+}
+#[async_trait]
+impl NetworkEventHandler for Nih {
+    async fn on_recv(&self, data: Vec<u8>) {
+        println!("BLAH {:?}", data);
+    }
+
+    async fn on_error(&self, message: String) {
+        println!("BLAH {:?}", message);
+    }
+}
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
@@ -140,6 +154,12 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
         });
         println!();
     };
+
+    let _p = nl.connect_ipv4(&"Inside".to_string(), Ipv4Addr::new(127, 0, 0, 2), 50, vec![], Box::from(Nih{})).await?;
+    let hello = String::from("hello");
+    _p.send(Ipv4Addr::new(127, 0, 0, 2), hello.into_bytes()).await?;
+
+    std::thread::sleep(std::time::Duration::from_millis(30000));
 
     Ok(())
 }

@@ -25,6 +25,7 @@ pub trait RustyRouterInstance {
     async fn connect_ipv4(
         &self,
         network_interface: &String,
+        source: Ipv4Addr,
         protocol: i32,
         multicast_groups: Vec<Ipv4Addr>,
         handler: Box<dyn NetworkEventHandler + Send + Sync>,

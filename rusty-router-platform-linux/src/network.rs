@@ -1,4 +1,5 @@
 use async_trait::async_trait;
+use std::os::raw::c_int;
 use log::{error, warn};
 use nix::sys::epoll::{
     epoll_create1, epoll_ctl, epoll_wait, EpollCreateFlags, EpollEvent, EpollFlags, EpollOp,
@@ -12,10 +13,32 @@ use nix::{
 use rusty_router_common::prelude::*;
 use rusty_router_model::{InetPacketNetworkInterface, NetworkEventHandler};
 use std::collections::HashMap;
+use std::os::raw::c_void;
 use std::os::unix::io::RawFd;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::{ffi::OsString, net::Ipv4Addr, sync::Arc};
 use tokio::sync::RwLock;
+
+
+#[derive(Clone)]
+struct IncludeHeader {
+}
+impl nix::sys::socket::SetSockOpt for IncludeHeader {
+    type Val = i32;
+
+    fn set(&self, fd: RawFd, val: &i32) -> std::result::Result<(), Errno> {
+        unsafe {
+            let res = libc::setsockopt(
+                fd,
+                libc::IPPROTO_IP,
+                libc::IP_HDRINCL,
+                val as *const c_int as *const c_void,
+                std::mem::size_of::<c_int>() as libc::socklen_t,
+            );
+            Errno::result(res).map(drop)
+        }
+    }
+}
 
 pub struct LinuxInetPacketNetworkInterface {
     _ticket: PollerTicket, // Need to store this as it must have the same scope as the container.
@@ -24,6 +47,7 @@ pub struct LinuxInetPacketNetworkInterface {
 impl LinuxInetPacketNetworkInterface {
     pub async fn new(
         network_device: String,
+        source: Ipv4Addr,
         protocol: i32,
         multicast_groups: Vec<Ipv4Addr>,
         handler: Box<dyn NetworkEventHandler + Send + Sync>,
@@ -50,8 +74,8 @@ impl LinuxInetPacketNetworkInterface {
             sock.get(),
             nix::sys::socket::sockopt::BindToDevice,
             &OsString::from(network_device),
-        )
-        .map_err(|e| Error::System(format!("{:?}", e)))?;
+        ).map_err(|e| Error::System(format!("{:?}", e)))?;
+        nix::sys::socket::setsockopt(sock.get(), IncludeHeader {}, &(1 as i32)).map_err(|e| Error::System(format!("{:?}", e)))?;
 
         let real: Arc<Box<dyn PollerListener + Send + Sync>> = Arc::new(Box::new(
             LinuxInetPacketNetworkInterfacePollerListener::new(sock.clone(), handler).await?,
@@ -59,17 +83,18 @@ impl LinuxInetPacketNetworkInterface {
         let poller_ticket = poller.add_item(sock.get(), real).await?;
 
         Ok(LinuxInetPacketNetworkInterface {
-            sock: sock,
+            sock,
             _ticket: poller_ticket,
         })
     }
 }
 #[async_trait]
 impl InetPacketNetworkInterface for LinuxInetPacketNetworkInterface {
-    async fn send(&self, to: std::net::Ipv4Addr, data: Vec<u8>) -> Result<usize> {
+    async fn send(&self, to: std::net::Ipv4Addr, _data: Vec<u8>) -> Result<usize> {
+        println!("{:?}", to);
         Ok(nix::sys::socket::sendto(
             self.sock.get(),
-            &data[..],
+            &vec![69, 0, 0, 0, 0, 0, 0, 0, 64, 50, 0, 0, 127, 0, 0, 2, 172, 20, 94, 5, 104, 101, 108, 108, 111],
             &SockAddr::Inet(InetAddr::new(
                 IpAddr::from_std(&std::net::IpAddr::V4(to)),
                 0,
