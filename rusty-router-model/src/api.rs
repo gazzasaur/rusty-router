@@ -26,7 +26,7 @@ pub trait RustyRouterInstance {
         &self,
         network_interface: &String,
         source: Ipv4Addr,
-        protocol: i32,
+        protocol: u8,
         multicast_groups: Vec<Ipv4Addr>,
         handler: Box<dyn NetworkEventHandler + Send + Sync>,
     ) -> Result<Box<dyn InetPacketNetworkInterface + Send + Sync>>;
@@ -40,5 +40,5 @@ pub trait NetworkEventHandler {
 
 #[async_trait]
 pub trait InetPacketNetworkInterface {
-    async fn send(&self, to: std::net::Ipv4Addr, data: Vec<u8>) -> Result<usize>;
+    async fn send(&self, to: std::net::Ipv4Addr, data: &Vec<u8>) -> Result<usize>;
 }

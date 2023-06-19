@@ -46,7 +46,7 @@ impl RustyRouterInstance for LinuxRustyRouterInstance {
         Ok(self.platform.list_network_interfaces().await?)
     }
 
-    async fn connect_ipv4(&self, network_interface: &String, source: Ipv4Addr, protocol: i32, multicast_groups: Vec<Ipv4Addr>, handler: Box<dyn NetworkEventHandler + Send + Sync>) -> Result<Box<dyn InetPacketNetworkInterface + Send + Sync>> {
+    async fn connect_ipv4(&self, network_interface: &String, source: Ipv4Addr, protocol: u8, multicast_groups: Vec<Ipv4Addr>, handler: Box<dyn NetworkEventHandler + Send + Sync>) -> Result<Box<dyn InetPacketNetworkInterface + Send + Sync>> {
         Ok(self.platform.connect_ipv4(network_interface, source, protocol, multicast_groups, handler).await?)
     }
 }
@@ -76,7 +76,7 @@ impl RustyRouterInstance for LinuxRustyRouterPlatform {
 
     // This pulls all interfaces and filters down.  This is not expected to occur often, but this is expensive.
     // TODO Store the interfaces on the platform.  Subscribe to changes for updates and run anti-entrophy polls.
-    async fn connect_ipv4(&self, network_interface: &String, source: Ipv4Addr, protocol: i32, multicast_groups: Vec<Ipv4Addr>, handler: Box<dyn NetworkEventHandler + Send + Sync>) -> Result<Box<dyn InetPacketNetworkInterface + Send + Sync>> {
+    async fn connect_ipv4(&self, network_interface: &String, source: Ipv4Addr, protocol: u8, multicast_groups: Vec<Ipv4Addr>, handler: Box<dyn NetworkEventHandler + Send + Sync>) -> Result<Box<dyn InetPacketNetworkInterface + Send + Sync>> {
         let network_interface: String = network_interface.clone();
         let mut interfaces: Vec<String> = self.list_network_interfaces().await?.drain(..).filter(|interface| {
             // A warning is already emitted if more than one interface with the same name exists

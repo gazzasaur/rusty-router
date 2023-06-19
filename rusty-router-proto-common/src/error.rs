@@ -1,7 +1,7 @@
 use thiserror::Error;
 
 #[derive(Error, Debug)]
-pub enum ProtocolParseError {
+pub enum ProtocolError {
     #[error("[{0}] Expecting data of at least {1} bytes but only {2} bytes are available")]
     InvalidMinimumLength(&'static str, usize, usize),
     #[error("[{0}] Expecting header to be {1} bytes but only {2} bytes are available")]
@@ -19,4 +19,9 @@ pub enum ProtocolParseError {
     ConversionError(&'static str, &'static str, u32),
     #[error("[{proto}] Checksum mismatch.  Expected: {expected:#06x}, Actual: {actual:#06x}")]
     InvalidChecksum { proto: &'static str, expected: u16, actual: u16 },
+}
+impl From<ProtocolError> for rusty_router_common::error::Error {
+    fn from(value: ProtocolError) -> Self {
+        rusty_router_common::error::Error::Protocol(value.to_string())
+    }
 }

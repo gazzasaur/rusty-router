@@ -7,6 +7,7 @@ edition = "2018"
 [dependencies]
 rusty-router-common = { workspace = true }
 rusty-router-model = { path = "../rusty-router-model" }
+rusty-router-proto-ip = { path = "../rusty-router-proto-ip" }
 
 log = { workspace = true }
 rand = { workspace = true }

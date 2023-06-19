@@ -11,4 +11,7 @@ pub enum Error {
 
     #[error("System Error: {0}")]
     System(String),
+
+    #[error("Protocol Error: {0}")]
+    Protocol(String),
 }

@@ -1,7 +1,9 @@
 use std::convert::TryInto;
 
-mod error;
-pub use error::*;
+pub mod error;
+pub mod prelude;
+
+use crate::error::ProtocolError;
 
 #[cfg(target_endian = "big")]
 const NATIVE_NUMBER_FROM_BYTES: fn([u8; 8]) -> u64 = u64::from_be_bytes;
@@ -16,7 +18,7 @@ const NATIVE_NUMBER_FROM_NETWORK: bool = true;
 #[macro_export]
 macro_rules! from_be_bytes {
     ($ty:ty, $label:expr, $value:expr) => {{
-        <$ty>::from_be_bytes($value.try_into().map_err(|_| ProtocolParseError::ConversionError($label, file!(), line!()))?)
+        <$ty>::from_be_bytes($value.try_into().map_err(|_| ProtocolError::ConversionError($label, file!(), line!()))?)
     }};
 }
 
@@ -28,12 +30,12 @@ impl InternetChecksum {
         InternetChecksum { accumulator: 0 }
     }
 
-    pub fn add(&mut self, data: &[u8]) -> Result<(), ProtocolParseError> {
+    pub fn add(&mut self, data: &[u8]) -> Result<(), ProtocolError> {
         self.accumulator += Self::calculate_partial_result(data)?;
         Ok(())
     }
 
-    pub fn subtract(&mut self, data: &[u8]) -> Result<(), ProtocolParseError> {
+    pub fn subtract(&mut self, data: &[u8]) -> Result<(), ProtocolError> {
         self.accumulator -= Self::calculate_partial_result(data)?;
         Ok(())
     }
@@ -42,15 +44,15 @@ impl InternetChecksum {
         Self::calculate_final_result(self.accumulator)
     }
 
-    pub fn checksum(data: &[u8]) -> Result<u16, ProtocolParseError> {
+    pub fn checksum(data: &[u8]) -> Result<u16, ProtocolError> {
         Ok(Self::calculate_final_result(Self::calculate_partial_result(data)?))
     }
 
-    fn calculate_partial_result(data: &[u8]) -> Result<u128, ProtocolParseError> {
+    fn calculate_partial_result(data: &[u8]) -> Result<u128, ProtocolError> {
         let mut partial_accumulator: u128 = 0;
         for i in 0..(data.len()/8) {
             // This should not be reachable.  But in the off chance it is, don't panic.  Allow the application to choose the next steps.
-            let byte_data = data[i*8..(i*8 + 8)].try_into().map_err(|_| ProtocolParseError::ConversionError("Checksum", file!(), line!()))?;
+            let byte_data = data[i*8..(i*8 + 8)].try_into().map_err(|_| ProtocolError::ConversionError("Checksum", file!(), line!()))?;
             partial_accumulator += NATIVE_NUMBER_FROM_BYTES(byte_data) as u128;
         }
         if NATIVE_NUMBER_FROM_NETWORK {
@@ -84,7 +86,7 @@ mod tests {
     use super::*;
 
     #[test]
-    pub fn test_conversion_ident() -> Result<(), ProtocolParseError> {
+    pub fn test_conversion_ident() -> Result<(), ProtocolError> {
         let label = "Label";
 
         let value = vec![0xA1, 0xB3];
@@ -95,7 +97,7 @@ mod tests {
     }
 
     #[test]
-    pub fn test_conversion_literal() -> Result<(), ProtocolParseError> {
+    pub fn test_conversion_literal() -> Result<(), ProtocolError> {
         let label = "Label";
         assert_eq!(from_be_bytes!(u16, label, [0xA1, 0xB3][..]), 0xA1B3);
 
@@ -103,15 +105,15 @@ mod tests {
     }
 
     #[test]
-    pub fn test_conversion_failed_ident() -> Result<(), ProtocolParseError> {
-        fn perform_test() -> Result<(), ProtocolParseError> {
+    pub fn test_conversion_failed_ident() -> Result<(), ProtocolError> {
+        fn perform_test() -> Result<(), ProtocolError> {
             let label = "Label";
             let value = vec![0xA1];
             let value_ref = &value[..];
             from_be_bytes!(u16, label, value_ref);
             Ok(())
         }
-        if let Err(ProtocolParseError::ConversionError(error_label, error_file, error_line)) = perform_test() {
+        if let Err(ProtocolError::ConversionError(error_label, error_file, error_line)) = perform_test() {
             assert_eq!(error_label, "Label");
             assert_eq!(error_line, line!() - 5);
             assert_eq!(error_file, "rusty-router-proto-common/src/lib.rs");
@@ -123,13 +125,13 @@ mod tests {
     }
 
     #[test]
-    pub fn test_conversion_failed_literal() -> Result<(), ProtocolParseError> {
-        fn perform_test() -> Result<(), ProtocolParseError> {
+    pub fn test_conversion_failed_literal() -> Result<(), ProtocolError> {
+        fn perform_test() -> Result<(), ProtocolError> {
             let label = "Label";
             from_be_bytes!(u16, label, [0xA1][..]);
             Ok(())
         }
-        if let Err(ProtocolParseError::ConversionError(error_label, error_file, error_line)) = perform_test() {
+        if let Err(ProtocolError::ConversionError(error_label, error_file, error_line)) = perform_test() {
             assert_eq!(error_label, "Label");
             assert_eq!(error_line, line!() - 5);
             assert_eq!(error_file, "rusty-router-proto-common/src/lib.rs");
@@ -141,7 +143,7 @@ mod tests {
     }
 
     #[test]
-    pub fn test_checksum() -> Result<(), ProtocolParseError> {
+    pub fn test_checksum() -> Result<(), ProtocolError> {
         assert_eq!(InternetChecksum::checksum(&[])?, 65535);
         assert_eq!(InternetChecksum::checksum(&[0x80])?, 32767);
         assert_eq!(InternetChecksum::checksum(&[0x00, 0x01])?, 65534);
@@ -151,7 +153,7 @@ mod tests {
     }
 
     #[test]
-    pub fn test_checksum_update() -> Result<(), ProtocolParseError> {
+    pub fn test_checksum_update() -> Result<(), ProtocolError> {
         let mut checksum = InternetChecksum::new();
         checksum.add(&[0x01, 0x03, 0x07, 0x0F, 0x11, 0x33, 0x77, 0xFF, 0x10, 0x30, 0x77, 0xF0, 0x11, 0x33, 0x77, 0xFF])?;
         assert_eq!(checksum.calculate(), 23912);

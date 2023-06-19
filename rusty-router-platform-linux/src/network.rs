@@ -1,5 +1,4 @@
 use async_trait::async_trait;
-use std::os::raw::c_int;
 use log::{error, warn};
 use nix::sys::epoll::{
     epoll_create1, epoll_ctl, epoll_wait, EpollCreateFlags, EpollEvent, EpollFlags, EpollOp,
@@ -12,17 +11,17 @@ use nix::{
 };
 use rusty_router_common::prelude::*;
 use rusty_router_model::{InetPacketNetworkInterface, NetworkEventHandler};
+use rusty_router_proto_ip::{IpV4Header, IpV4HeaderBuilder};
 use std::collections::HashMap;
+use std::os::raw::c_int;
 use std::os::raw::c_void;
 use std::os::unix::io::RawFd;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::{ffi::OsString, net::Ipv4Addr, sync::Arc};
 use tokio::sync::RwLock;
 
-
 #[derive(Clone)]
-struct IncludeHeader {
-}
+struct IncludeHeader {}
 impl nix::sys::socket::SetSockOpt for IncludeHeader {
     type Val = i32;
 
@@ -43,19 +42,25 @@ impl nix::sys::socket::SetSockOpt for IncludeHeader {
 pub struct LinuxInetPacketNetworkInterface {
     _ticket: PollerTicket, // Need to store this as it must have the same scope as the container.
     sock: Arc<AutoCloseFd>,
+    source: Ipv4Addr,
+    protocol: u8,
 }
 impl LinuxInetPacketNetworkInterface {
     pub async fn new(
         network_device: String,
         source: Ipv4Addr,
-        protocol: i32,
+        protocol: u8,
         multicast_groups: Vec<Ipv4Addr>,
         handler: Box<dyn NetworkEventHandler + Send + Sync>,
         poller: &Poller,
     ) -> Result<LinuxInetPacketNetworkInterface> {
         let sock = Arc::from(AutoCloseFd::new(
             Errno::result(unsafe {
-                libc::socket(libc::AF_INET, libc::O_NONBLOCK | libc::SOCK_RAW, protocol)
+                libc::socket(
+                    libc::AF_INET,
+                    libc::O_NONBLOCK | libc::SOCK_RAW,
+                    protocol as i32,
+                )
             })
             .map_err(|e| Error::System(format!("{:?}", e)))?,
         ));
@@ -63,10 +68,7 @@ impl LinuxInetPacketNetworkInterface {
             nix::sys::socket::setsockopt(
                 sock.get(),
                 nix::sys::socket::sockopt::IpAddMembership,
-                &IpMembershipRequest::new(
-                    multicast_group,
-                    None,
-                ),
+                &IpMembershipRequest::new(multicast_group, None),
             )
             .map_err(|e| Error::System(format!("{:?}", e)))?;
         }
@@ -74,8 +76,10 @@ impl LinuxInetPacketNetworkInterface {
             sock.get(),
             nix::sys::socket::sockopt::BindToDevice,
             &OsString::from(network_device),
-        ).map_err(|e| Error::System(format!("{:?}", e)))?;
-        nix::sys::socket::setsockopt(sock.get(), IncludeHeader {}, &(1 as i32)).map_err(|e| Error::System(format!("{:?}", e)))?;
+        )
+        .map_err(|e| Error::System(format!("{:?}", e)))?;
+        nix::sys::socket::setsockopt(sock.get(), IncludeHeader {}, &(1 as i32))
+            .map_err(|e| Error::System(format!("{:?}", e)))?;
 
         let real: Arc<Box<dyn PollerListener + Send + Sync>> = Arc::new(Box::new(
             LinuxInetPacketNetworkInterfacePollerListener::new(sock.clone(), handler).await?,
@@ -85,16 +89,26 @@ impl LinuxInetPacketNetworkInterface {
         Ok(LinuxInetPacketNetworkInterface {
             sock,
             _ticket: poller_ticket,
+            source,
+            protocol,
         })
     }
 }
 #[async_trait]
 impl InetPacketNetworkInterface for LinuxInetPacketNetworkInterface {
-    async fn send(&self, to: std::net::Ipv4Addr, _data: Vec<u8>) -> Result<usize> {
-        println!("{:?}", to);
+    async fn send(&self, to: std::net::Ipv4Addr, data: &Vec<u8>) -> Result<usize> {
+        let mut builder = IpV4HeaderBuilder::new(self.source.clone(), to, self.protocol);
+
+        // Let the kernel calculate these
+        builder.force_identification(Some(0));
+        builder.force_header_checksum(Some(0));
+
+        let mut packet = Vec::<u8>::from(&builder.build(data.len())?);
+        packet.extend(data);
+
         Ok(nix::sys::socket::sendto(
             self.sock.get(),
-            &vec![69, 0, 0, 0, 0, 0, 0, 0, 64, 50, 0, 0, 127, 0, 0, 2, 172, 20, 94, 5, 104, 101, 108, 108, 111],
+            &packet,
             &SockAddr::Inet(InetAddr::new(
                 IpAddr::from_std(&std::net::IpAddr::V4(to)),
                 0,

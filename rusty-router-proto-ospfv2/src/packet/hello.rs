@@ -1,6 +1,6 @@
 use std::convert::TryFrom;
 use super::header::{PROTOCOL, OspfHeader};
-use rusty_router_proto_common::ProtocolParseError;
+use rusty_router_proto_common::error::ProtocolError;
 
 #[derive(Debug)]
 pub struct OspfHelloPacket {
@@ -15,7 +15,7 @@ pub struct OspfHelloPacket {
     // neighbors: Vec<u32>,
 }
 impl TryFrom<&[u8]> for OspfHelloPacket {
-    type Error = ProtocolParseError;
+    type Error = ProtocolError;
 
     fn try_from(data: &[u8]) -> Result<Self, Self::Error> {
         let header = OspfHeader::try_from(data)?;
@@ -23,7 +23,7 @@ impl TryFrom<&[u8]> for OspfHelloPacket {
 
         let length = header.get_length();
         if length < 44 {
-            return Err(ProtocolParseError::InvalidMinimumLength(PROTOCOL, 44, length as usize));
+            return Err(ProtocolError::InvalidMinimumLength(PROTOCOL, 44, length as usize));
         }
         
 
@@ -31,6 +31,6 @@ impl TryFrom<&[u8]> for OspfHelloPacket {
         //     header,
         //     network_mask: u32::from_be_bytes(data[4..8].try_into().map_err(|_| OspfParseError::ConversionError(file!(), line!()))?),
         // });
-        Err(ProtocolParseError::UnsupportedFieldValue(PROTOCOL, "TODO", 0))
+        Err(ProtocolError::UnsupportedFieldValue(PROTOCOL, "TODO", 0))
     }
 }

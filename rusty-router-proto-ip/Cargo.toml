@@ -5,3 +5,5 @@ edition = "2018"
 
 [dependencies]
 rusty-router-proto-common = { path = "../rusty-router-proto-common" }
+
+rand = { workspace = true }
