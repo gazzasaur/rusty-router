@@ -155,11 +155,5 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
         println!();
     };
 
-    let _p = nl.connect_ipv4(&"Inside".to_string(), Ipv4Addr::new(127, 0, 0, 2), 50, vec![], Box::from(Nih{})).await?;
-    let hello = String::from("hello");
-    _p.send(Ipv4Addr::new(127, 0, 0, 2), &hello.into_bytes()).await?;
-
-    std::thread::sleep(std::time::Duration::from_millis(30000));
-
     Ok(())
 }

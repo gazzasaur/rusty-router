@@ -299,7 +299,7 @@ impl TryFrom<&[u8]> for IpV4Header {
         let total_length = from_be_bytes!(u16, IP_V4_PROTO, &data[2..4]);
         let identification = from_be_bytes!(u16, IP_V4_PROTO, &data[4..6]);
         let fragment_offset = (from_be_bytes!(u16, IP_V4_PROTO, &data[6..8]) & 0x1FFF) * 8;
-        let flags = (data[6] & 0xE0) >> 1;
+        let flags = (data[6] & 0xE0) >> 5;
         let time_to_live = data[8];
         let protocol = data[9];
         let header_checksum = from_be_bytes!(u16, IP_V4_PROTO, &data[10..12]);
@@ -354,10 +354,10 @@ mod tests {
     #[test]
     fn parse_header() -> Result<()> {
         let data = [
-            0x45, 12, 34, 56, 78, 90, 0xB1, 98, 127, 89, 0x88, 0x8f, 127, 0, 0, 1, 8, 9, 10, 11,
+            0x45, 12, 34, 56, 78, 90, 0xD1, 98, 127, 89, 0x88, 0x8f, 127, 0, 0, 1, 8, 9, 10, 11,
         ];
         let header = IpV4Header::try_from(&data[..])?;
-        assert_eq!(InternetChecksum::checksum(&data[..])?, 0);
+        assert_eq!(InternetChecksum::checksum(&data[..])?, 57343);
         assert_eq!(header.get_version(), &IpVersion::ipv4());
         assert_eq!(header.get_internet_header_length(), 20 / 4);
         assert_eq!(header.get_total_length(), 8760);
