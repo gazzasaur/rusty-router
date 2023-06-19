@@ -341,6 +341,7 @@ impl NetlinkSocketListener for InterfaceManagerNetlinkSocketListener {
 mod tests {
     use std::collections::HashMap;
     use std::error::Error;
+    use std::net::IpAddr;
     use std::sync::Arc;
     use std::sync::atomic::AtomicBool;
     use std::sync::atomic::Ordering;
@@ -348,12 +349,16 @@ mod tests {
     use netlink_packet_core::NetlinkHeader;
     use netlink_packet_core::NetlinkMessage;
     use netlink_packet_core::NetlinkPayload;
+    use netlink_packet_route::AddressHeader;
+    use netlink_packet_route::AddressMessage;
     use netlink_packet_route::LinkHeader;
     use netlink_packet_route::LinkMessage;
     use netlink_packet_route::RtnlMessage;
     use netlink_packet_route::link::nlas::State;
     use rand::random;
+    use rusty_router_model::IpAddress;
     use rusty_router_model::NetworkInterface;
+    use rusty_router_model::NetworkInterfaceStatus;
     use rusty_router_model::NetworkLink;
     use rusty_router_model::NetworkLinkOperationalState;
     use rusty_router_model::NetworkLinkStatus;
@@ -400,10 +405,6 @@ mod tests {
                         link_message.header = {
                             let mut link_header = LinkHeader::default();
                             link_header.index = 100;
-                            link_header.flags = random();
-                            link_header.change_mask = random();
-                            link_header.link_layer_type = random();
-                            link_header.interface_family = random();
                             link_header
                         };
                         link_message.nlas = vec![
@@ -418,10 +419,6 @@ mod tests {
                         link_message.header = {
                             let mut link_header = LinkHeader::default();
                             link_header.index = 101;
-                            link_header.flags = random();
-                            link_header.change_mask = random();
-                            link_header.link_layer_type = random();
-                            link_header.interface_family = random();
                             link_header
                         };
                         link_message.nlas = vec![
@@ -453,122 +450,170 @@ mod tests {
         Ok(())
     }
 
-    // #[tokio::test]
-    // pub async fn test_interface_manager_worker_interfaces() -> Result<(), Box<dyn Error + Send + Sync>> {
-    //     let config = Arc::new(Router::new(vec![
-    //         (String::from("SomeLink2"), NetworkLink::new(String::from("SomeDevice2"), NetworkLinkType::GenericInterface)),
-    //         (String::from("SomeLink3"), NetworkLink::new(String::from("SomeDevice3"), NetworkLinkType::GenericInterface)),
-    //         (String::from("SomeLink5"), NetworkLink::new(String::from("SomeDevice5"), NetworkLinkType::GenericInterface)),
-    //         (String::from("SomeLink6"), NetworkLink::new(String::from("SomeDevice6"), NetworkLinkType::GenericInterface)),
-    //         (String::from("SomeLink7"), NetworkLink::new(String::from("SomeDevice7"), NetworkLinkType::GenericInterface)),
-    //         (String::from("SomeLink8"), NetworkLink::new(String::from("SomeDevice8"), NetworkLinkType::GenericInterface)),
-    //     ].drain(..).collect(), vec![
-    //         (String::from("SomeInterface4"), NetworkInterface::new(None, String::from("SomeLink4"), vec![])),
-    //         (String::from("SomeInterface5"), NetworkInterface::new(None, String::from("SomeLink5"), vec![])),
-    //         (String::from("SomeInterface6"), NetworkInterface::new(None, String::from("SomeLink6"), vec![])),
-    //         (String::from("SomeInterface7"), NetworkInterface::new(None, String::from("SomeLink7"), vec![])),
-    //     ].drain(..).collect(), HashMap::new()));
+    #[tokio::test]
+    pub async fn test_interface_manager_worker_interfaces() -> Result<(), Box<dyn Error + Send + Sync>> {
+        let config = Arc::new(Router::new(vec![
+            (String::from("SomeLink2"), NetworkLink::new(String::from("SomeDevice2"), NetworkLinkType::GenericInterface)),
+            (String::from("SomeLink3"), NetworkLink::new(String::from("SomeDevice3"), NetworkLinkType::GenericInterface)),
+            (String::from("SomeLink5"), NetworkLink::new(String::from("SomeDevice5"), NetworkLinkType::GenericInterface)),
+            (String::from("SomeLink6"), NetworkLink::new(String::from("SomeDevice6"), NetworkLinkType::GenericInterface)),
+            (String::from("SomeLink7"), NetworkLink::new(String::from("SomeDevice7"), NetworkLinkType::GenericInterface)),
+            (String::from("SomeLink8"), NetworkLink::new(String::from("SomeDevice8"), NetworkLinkType::GenericInterface)),
+        ].drain(..).collect(), vec![
+            (String::from("SomeInterface4"), NetworkInterface::new(None, String::from("SomeLink4"), vec![])),
+            (String::from("SomeInterface5"), NetworkInterface::new(None, String::from("SomeLink5"), vec![])),
+            (String::from("SomeInterface6"), NetworkInterface::new(None, String::from("SomeLink6"), vec![])),
+            (String::from("SomeInterface7"), NetworkInterface::new(None, String::from("SomeLink7"), vec![])),
+        ].drain(..).collect(), HashMap::new()));
 
-    //     let mut mock_netlink_socket = MockNetlinkSocket::new();
-    //     let netlink_message_processor = Arc::new(NetlinkMessageProcessor::new(config.clone()));
+        let mut mock_netlink_socket = MockNetlinkSocket::new();
+        let netlink_message_processor = Arc::new(NetlinkMessageProcessor::new(config.clone()));
 
-    //     mock_netlink_socket.expect_send_message().withf(|message| {
-    //         match message.payload {
-    //             netlink_packet_core::NetlinkPayload::InnerMessage(netlink_packet_route::RtnlMessage::GetLink(_)) => true,
-    //             netlink_packet_core::NetlinkPayload::InnerMessage(netlink_packet_route::RtnlMessage::GetAddress(_)) => true,
-    //             _ => false,
-    //         }
-    //     }).returning(|input| {
-    //         match input.payload {
-    //             netlink_packet_core::NetlinkPayload::InnerMessage(netlink_packet_route::RtnlMessage::GetLink(_)) => {
-    //                 let netlink_header = NetlinkHeader { sequence_number: input.header.sequence_number, flags: random(), port_number: random(), length: random(), message_type: random() };
+        mock_netlink_socket.expect_send_message().withf(|message| {
+            match message.payload {
+                netlink_packet_core::NetlinkPayload::InnerMessage(netlink_packet_route::RtnlMessage::GetLink(_)) => true,
+                netlink_packet_core::NetlinkPayload::InnerMessage(netlink_packet_route::RtnlMessage::GetAddress(_)) => true,
+                _ => false,
+            }
+        }).returning(|input| {
+            match input.payload {
+                netlink_packet_core::NetlinkPayload::InnerMessage(netlink_packet_route::RtnlMessage::GetLink(_)) => {
+                    let mut netlink_header = NetlinkHeader::default();
+                    netlink_header.sequence_number = input.header.sequence_number;
 
-    //                 let iface1 = NetlinkMessage { header: netlink_header, payload: NetlinkPayload::InnerMessage(RtnlMessage::NewLink(LinkMessage {
-    //                     header: LinkHeader { index: 100, link_layer_type: random(), change_mask: random(), flags: random(), interface_family: random() },
-    //                     nlas: vec![
-    //                         netlink_packet_route::link::nlas::Nla::IfName(String::from("SomeDevice1")),
-    //                         netlink_packet_route::link::nlas::Nla::OperState(State::Up),
-    //                     ]
-    //                 })) };
-    //                 let iface2 = NetlinkMessage { header: netlink_header, payload: NetlinkPayload::InnerMessage(RtnlMessage::NewLink(LinkMessage {
-    //                     header: LinkHeader { index: 101, link_layer_type: random(), change_mask: random(), flags: random(), interface_family: random() },
-    //                     nlas: vec![
-    //                         netlink_packet_route::link::nlas::Nla::IfName(String::from("SomeDevice2")),
-    //                         netlink_packet_route::link::nlas::Nla::OperState(State::Up),
-    //                     ]
-    //                 })) };
-    //                 let iface5 = NetlinkMessage { header: netlink_header, payload: NetlinkPayload::InnerMessage(RtnlMessage::NewLink(LinkMessage {
-    //                     header: LinkHeader { index: 105, link_layer_type: random(), change_mask: random(), flags: random(), interface_family: random() },
-    //                     nlas: vec![
-    //                         netlink_packet_route::link::nlas::Nla::IfName(String::from("SomeDevice5")),
-    //                         netlink_packet_route::link::nlas::Nla::OperState(State::Down),
-    //                     ]
-    //                 })) };
-    //                 let iface7 = NetlinkMessage { header: netlink_header, payload: NetlinkPayload::InnerMessage(RtnlMessage::NewLink(LinkMessage {
-    //                     header: LinkHeader { index: 107, link_layer_type: random(), change_mask: random(), flags: random(), interface_family: random() },
-    //                     nlas: vec![
-    //                         netlink_packet_route::link::nlas::Nla::IfName(String::from("SomeDevice7")),
-    //                         netlink_packet_route::link::nlas::Nla::OperState(State::Up),
-    //                     ]
-    //                 })) };
-    //                 let iface8 = NetlinkMessage { header: netlink_header, payload: NetlinkPayload::InnerMessage(RtnlMessage::NewLink(LinkMessage {
-    //                     header: LinkHeader { index: 108, link_layer_type: random(), change_mask: random(), flags: random(), interface_family: random() },
-    //                     nlas: vec![
-    //                         netlink_packet_route::link::nlas::Nla::IfName(String::from("SomeDevice8")),
-    //                         netlink_packet_route::link::nlas::Nla::OperState(State::Up),
-    //                     ]
-    //                 })) };
+                    let iface1 = NetlinkMessage::new(netlink_header, NetlinkPayload::InnerMessage(RtnlMessage::NewLink({
+                        let mut link_message = LinkMessage::default();
+                        link_message.header = {
+                            let mut link_header = LinkHeader::default();
+                            link_header.index = 100;
+                            link_header
+                        };
+                        link_message.nlas = vec![
+                            netlink_packet_route::link::nlas::Nla::IfName(String::from("SomeDevice1")),
+                            netlink_packet_route::link::nlas::Nla::OperState(State::Up),
+                        ];
+                        link_message
+                    })));
+                    let iface2 = NetlinkMessage::new(netlink_header, NetlinkPayload::InnerMessage(RtnlMessage::NewLink({
+                        let mut link_message = LinkMessage::default();
+                        link_message.header = {
+                            let mut link_header = LinkHeader::default();
+                            link_header.index = 101;
+                            link_header
+                        };
+                        link_message.nlas = vec![
+                            netlink_packet_route::link::nlas::Nla::IfName(String::from("SomeDevice2")),
+                            netlink_packet_route::link::nlas::Nla::OperState(State::Up),
+                        ];
+                        link_message
+                    })));
+                    let iface5 = NetlinkMessage::new(netlink_header, NetlinkPayload::InnerMessage(RtnlMessage::NewLink({
+                        let mut link_message = LinkMessage::default();
+                        link_message.header = {
+                            let mut link_header = LinkHeader::default();
+                            link_header.index = 105;
+                            link_header
+                        };
+                        link_message.nlas = vec![
+                            netlink_packet_route::link::nlas::Nla::IfName(String::from("SomeDevice5")),
+                            netlink_packet_route::link::nlas::Nla::OperState(State::Down),
+                        ];
+                        link_message
+                    })));
+                    let iface7 = NetlinkMessage::new(netlink_header, NetlinkPayload::InnerMessage(RtnlMessage::NewLink({
+                        let mut link_message = LinkMessage::default();
+                        link_message.header = {
+                            let mut link_header = LinkHeader::default();
+                            link_header.index = 107;
+                            link_header
+                        };
+                        link_message.nlas = vec![
+                            netlink_packet_route::link::nlas::Nla::IfName(String::from("SomeDevice7")),
+                            netlink_packet_route::link::nlas::Nla::OperState(State::Up),
+                        ];
+                        link_message
+                    })));
+                    let iface8 = NetlinkMessage::new(netlink_header, NetlinkPayload::InnerMessage(RtnlMessage::NewLink({
+                        let mut link_message = LinkMessage::default();
+                        link_message.header = {
+                            let mut link_header = LinkHeader::default();
+                            link_header.index = 108;
+                            link_header
+                        };
+                        link_message.nlas = vec![
+                            netlink_packet_route::link::nlas::Nla::IfName(String::from("SomeDevice8")),
+                            netlink_packet_route::link::nlas::Nla::OperState(State::Up),
+                        ];
+                        link_message
+                    })));
 
-    //                 Ok(vec![iface1, iface2, iface5, iface7, iface8])
-    //             },
-    //             netlink_packet_core::NetlinkPayload::InnerMessage(netlink_packet_route::RtnlMessage::GetAddress(_)) => {
-    //                 let netlink_header = NetlinkHeader { sequence_number: input.header.sequence_number, flags: random(), port_number: random(), length: random(), message_type: random() };
+                    Ok(vec![iface1, iface2, iface5, iface7, iface8])
+                },
+                netlink_packet_core::NetlinkPayload::InnerMessage(netlink_packet_route::RtnlMessage::GetAddress(_)) => {
+                    let mut netlink_header = NetlinkHeader::default();
+                    netlink_header.sequence_number = input.header.sequence_number;
 
-    //                 let address7 = NetlinkMessage { header: netlink_header, payload: NetlinkPayload::InnerMessage(RtnlMessage::NewAddress(AddressMessage {
-    //                     header: AddressHeader { index: 107, flags: random(), family: netlink_packet_route::AF_INET as u8, prefix_len: 20, scope: random() },
-    //                     nlas: vec![
-    //                         netlink_packet_route::address::nlas::Nla::Address(vec![1, 2, 3, 4]),
-    //                     ]
-    //                 })) };
-    //                 let address8 = NetlinkMessage { header: netlink_header, payload: NetlinkPayload::InnerMessage(RtnlMessage::NewAddress(AddressMessage {
-    //                     header: AddressHeader { index: 108, flags: random(), family: netlink_packet_route::AF_INET as u8, prefix_len: 32, scope: random() },
-    //                     nlas: vec![
-    //                         netlink_packet_route::address::nlas::Nla::Address(vec![2, 3, 4, 5]),
-    //                     ]
-    //                 })) };
+                    let address7 = NetlinkMessage::new(netlink_header, NetlinkPayload::InnerMessage(RtnlMessage::NewAddress({
+                        let mut address_message = AddressMessage::default();
+                        address_message.header = {
+                            let mut address_header = AddressHeader::default();
+                            address_header.index = 107;
+                            address_header.prefix_len = 20;
+                            address_header.family = netlink_packet_route::AF_INET as u8;
+                            address_header
+                        };
+                        address_message.nlas = vec![
+                            netlink_packet_route::address::nlas::Nla::Address(vec![1, 2, 3, 4]),
+                        ];
+                        address_message
+                    })));
+                    let address8 = NetlinkMessage::new(netlink_header, NetlinkPayload::InnerMessage(RtnlMessage::NewAddress({
+                        let mut address_message = AddressMessage::default();
+                        address_message.header = {
+                            let mut address_header = AddressHeader::default();
+                            address_header.index = 108;
+                            address_header.prefix_len = 32;
+                            address_header.family = netlink_packet_route::AF_INET as u8;
+                            address_header
+                        };
+                        address_message.nlas = vec![
+                            netlink_packet_route::address::nlas::Nla::Address(vec![2, 3, 4, 5]),
+                        ];
+                        address_message
+                    })));
 
-    //                 Ok(vec![address7, address8])
-    //             },
-    //             _ => Ok(vec![]),
-    //         }
-    //     });
+                    Ok(vec![address7, address8])
+                },
+                _ => Ok(vec![]),
+            }
+        });
 
-    //     let running = Arc::new(AtomicBool::new(false));
-    //     let database = Arc::new(RwLock::new(InterfaceManagerDatabase::new()));
-    //     let subject = InterfaceManagerWorker { config, running: running.clone(), database: database.clone(), netlink_socket: Arc::new(mock_netlink_socket), netlink_message_processor };
+        let running = Arc::new(AtomicBool::new(false));
+        let database = Arc::new(RwLock::new(InterfaceManagerDatabase::new()));
+        let subject = InterfaceManagerWorker { config, running: running.clone(), database: database.clone(), netlink_socket: Arc::new(mock_netlink_socket), netlink_message_processor };
 
-    //     subject.poll().await;
-    //     running.store(false, Ordering::SeqCst);
+        subject.poll().await;
+        running.store(false, Ordering::SeqCst);
 
-    //     assert_eq!(database.read().await.list_link_status(), vec![
-    //         NetworkLinkStatus::new(None, String::from("SomeDevice1"), NetworkLinkOperationalState::Up),
-    //         NetworkLinkStatus::new(Some(String::from("SomeLink2")), String::from("SomeDevice2"), NetworkLinkOperationalState::Up),
-    //         NetworkLinkStatus::new(Some(String::from("SomeLink3")), String::from("SomeDevice3"), NetworkLinkOperationalState::NotFound),
-    //         NetworkLinkStatus::new(Some(String::from("SomeLink5")), String::from("SomeDevice5"), NetworkLinkOperationalState::Down),
-    //         NetworkLinkStatus::new(Some(String::from("SomeLink6")), String::from("SomeDevice6"), NetworkLinkOperationalState::NotFound),
-    //         NetworkLinkStatus::new(Some(String::from("SomeLink7")), String::from("SomeDevice7"), NetworkLinkOperationalState::Up),
-    //         NetworkLinkStatus::new(Some(String::from("SomeLink8")), String::from("SomeDevice8"), NetworkLinkOperationalState::Up),
-    //     ]);
-    //     assert_eq!(database.read().await.list_interface_status(), vec![
-    //         NetworkInterfaceStatus::new(None, vec![IpAddress::new(IpAddr::from_str("2.3.4.5")?, 32)], NetworkLinkStatus::new(Some(String::from("SomeLink8")), String::from("SomeDevice8"), NetworkLinkOperationalState::Up)),
-    //         NetworkInterfaceStatus::new(Some(String::from("SomeInterface4")), vec![], NetworkLinkStatus::new(Some(String::from("SomeLink4")), String::from(""), NetworkLinkOperationalState::Misconfigured)),
-    //         NetworkInterfaceStatus::new(Some(String::from("SomeInterface5")), vec![], NetworkLinkStatus::new(Some(String::from("SomeLink5")), String::from("SomeDevice5"), NetworkLinkOperationalState::Down)),
-    //         NetworkInterfaceStatus::new(Some(String::from("SomeInterface6")), vec![], NetworkLinkStatus::new(Some(String::from("SomeLink6")), String::from("SomeDevice6"), NetworkLinkOperationalState::NotFound)),
-    //         NetworkInterfaceStatus::new(Some(String::from("SomeInterface7")), vec![IpAddress::new(IpAddr::from_str("1.2.3.4")?, 20)], NetworkLinkStatus::new(Some(String::from("SomeLink7")), String::from("SomeDevice7"), NetworkLinkOperationalState::Up)),
-    //     ]);
+        assert_eq!(database.read().await.list_link_status(), vec![
+            NetworkLinkStatus::new(None, String::from("SomeDevice1"), NetworkLinkOperationalState::Up),
+            NetworkLinkStatus::new(Some(String::from("SomeLink2")), String::from("SomeDevice2"), NetworkLinkOperationalState::Up),
+            NetworkLinkStatus::new(Some(String::from("SomeLink3")), String::from("SomeDevice3"), NetworkLinkOperationalState::NotFound),
+            NetworkLinkStatus::new(Some(String::from("SomeLink5")), String::from("SomeDevice5"), NetworkLinkOperationalState::Down),
+            NetworkLinkStatus::new(Some(String::from("SomeLink6")), String::from("SomeDevice6"), NetworkLinkOperationalState::NotFound),
+            NetworkLinkStatus::new(Some(String::from("SomeLink7")), String::from("SomeDevice7"), NetworkLinkOperationalState::Up),
+            NetworkLinkStatus::new(Some(String::from("SomeLink8")), String::from("SomeDevice8"), NetworkLinkOperationalState::Up),
+        ]);
+        assert_eq!(database.read().await.list_interface_status(), vec![
+            NetworkInterfaceStatus::new(None, vec![IpAddress::new("2.3.4.5".parse()?, 32)], NetworkLinkStatus::new(Some(String::from("SomeLink8")), String::from("SomeDevice8"), NetworkLinkOperationalState::Up)),
+            NetworkInterfaceStatus::new(Some(String::from("SomeInterface4")), vec![], NetworkLinkStatus::new(Some(String::from("SomeLink4")), String::from(""), NetworkLinkOperationalState::Misconfigured)),
+            NetworkInterfaceStatus::new(Some(String::from("SomeInterface5")), vec![], NetworkLinkStatus::new(Some(String::from("SomeLink5")), String::from("SomeDevice5"), NetworkLinkOperationalState::Down)),
+            NetworkInterfaceStatus::new(Some(String::from("SomeInterface6")), vec![], NetworkLinkStatus::new(Some(String::from("SomeLink6")), String::from("SomeDevice6"), NetworkLinkOperationalState::NotFound)),
+            NetworkInterfaceStatus::new(Some(String::from("SomeInterface7")), vec![IpAddress::new("1.2.3.4".parse()?, 20)], NetworkLinkStatus::new(Some(String::from("SomeLink7")), String::from("SomeDevice7"), NetworkLinkOperationalState::Up)),
+        ]);
 
-    //     Ok(())
-    // }
+        Ok(())
+    }
 
     // #[tokio::test]
     // pub async fn test_interface_manager_worker_interfaces_update() -> Result<(), Box<dyn Error + Send + Sync>> {
