@@ -1845,7 +1845,7 @@ mod tests {
     pub async fn test_interface_listener_delete_link() -> Result<(), Box<dyn Error + Send + Sync>> {
         let config = Arc::new(generate_test_config());
 
-        let netlink_header = NetlinkHeader::default(); // { sequence_number: random(), flags: random(), port_number: random(), length: random(), message_type: random() };
+        let netlink_header = NetlinkHeader::default();
         let netlink_message = NetlinkMessage::new(
             netlink_header,
             NetlinkPayload::InnerMessage(RtnlMessage::DelLink({
@@ -1935,34 +1935,41 @@ mod tests {
         Ok(())
     }
 
-    // #[tokio::test]
-    // pub async fn test_interface_listener_remove_link() -> Result<(), Box<dyn Error + Send + Sync>> {
-    //     let config = Arc::new(generate_test_config());
-    //     let netlink_header = NetlinkHeader { sequence_number: random(), flags: random(), port_number: random(), length: random(), message_type: random() };
-    //     let netlink_message = NetlinkMessage { header: netlink_header, payload: NetlinkPayload::InnerMessage(RtnlMessage::DelLink(LinkMessage {
-    //         header: LinkHeader { index: 110, link_layer_type: random(), change_mask: random(), flags: random(), interface_family: random() },
-    //         nlas: vec![
-    //             netlink_packet_route::link::nlas::Nla::IfName(String::from("SomeDeviceA")),
-    //             netlink_packet_route::link::nlas::Nla::OperState(State::Down),
-    //         ]
-    //     })) };
+    #[tokio::test]
+    pub async fn test_interface_listener_remove_link() -> Result<(), Box<dyn Error + Send + Sync>> {
+        let config = Arc::new(generate_test_config());
+        let mut netlink_header = NetlinkHeader::default();
 
-    //     let database = Arc::new(RwLock::new(InterfaceManagerDatabase::new()));
-    //     database.write().await.set_link_status_item(NetworkStatusItem::new(CanonicalNetworkId::new(Some(110), None, Some(String::from("SomeDeviceA"))), NetworkLinkStatus::new(None, String::from("SomeDeviceA"), NetworkLinkOperationalState::Down)));
-    //     database.write().await.set_link_status_item(NetworkStatusItem::new(CanonicalNetworkId::new(Some(101), Some(String::from("SomeLink2")), Some(String::from("SomeDevice2"))), NetworkLinkStatus::new(Some(String::from("SomeLink2")), String::from("SomeDevice2"), NetworkLinkOperationalState::Up)));
-    //     database.write().await.set_interface_status_item(NetworkStatusItem::new(CanonicalNetworkId::new(Some(110), None, Some(String::from("SomeDeviceA"))), NetworkInterfaceStatus::new(None, vec![], NetworkLinkStatus::new(None, String::from("SomeDeviceA"), NetworkLinkOperationalState::Down))));
+        let netlink_message = NetlinkMessage::new(netlink_header, NetlinkPayload::InnerMessage(RtnlMessage::DelLink({
+            let mut link_message = LinkMessage::default();
+            link_message.header = {
+                let mut link_header = LinkHeader::default();
+                link_header.index = 110;
+                link_header
+            };
+            link_message.nlas = vec![
+                netlink_packet_route::link::nlas::Nla::IfName(String::from("SomeDeviceA")),
+                netlink_packet_route::link::nlas::Nla::OperState(State::Down),
+            ];
+            link_message
+        })));
 
-    //     let subject = InterfaceManagerNetlinkSocketListener::new(Arc::new(NetlinkMessageProcessor::new(config)), database.clone());
-    //     subject.message_received(netlink_message).await;
+        let database = Arc::new(RwLock::new(InterfaceManagerDatabase::new()));
+        database.write().await.set_link_status_item(NetworkStatusItem::new(CanonicalNetworkId::new(Some(110), None, Some(String::from("SomeDeviceA"))), NetworkLinkStatus::new(None, String::from("SomeDeviceA"), NetworkLinkOperationalState::Down)));
+        database.write().await.set_link_status_item(NetworkStatusItem::new(CanonicalNetworkId::new(Some(101), Some(String::from("SomeLink2")), Some(String::from("SomeDevice2"))), NetworkLinkStatus::new(Some(String::from("SomeLink2")), String::from("SomeDevice2"), NetworkLinkOperationalState::Up)));
+        database.write().await.set_interface_status_item(NetworkStatusItem::new(CanonicalNetworkId::new(Some(110), None, Some(String::from("SomeDeviceA"))), NetworkInterfaceStatus::new(None, vec![], NetworkLinkStatus::new(None, String::from("SomeDeviceA"), NetworkLinkOperationalState::Down))));
 
-    //     assert_eq!(database.read().await.list_link_status(), vec![
-    //         NetworkLinkStatus::new(Some(String::from("SomeLink2")), String::from("SomeDevice2"), NetworkLinkOperationalState::Up),
-    //     ]);
-    //     assert_eq!(database.read().await.list_interface_status(), vec![
-    //     ]);
+        let subject = InterfaceManagerNetlinkSocketListener::new(Arc::new(NetlinkMessageProcessor::new(config)), database.clone());
+        subject.message_received(netlink_message).await;
 
-    //     Ok(())
-    // }
+        assert_eq!(database.read().await.list_link_status(), vec![
+            NetworkLinkStatus::new(Some(String::from("SomeLink2")), String::from("SomeDevice2"), NetworkLinkOperationalState::Up),
+        ]);
+        assert_eq!(database.read().await.list_interface_status(), vec![
+        ]);
+
+        Ok(())
+    }
 
     // #[tokio::test]
     // pub async fn test_interface_listener_update_link() -> Result<(), Box<dyn Error + Send + Sync>> {
