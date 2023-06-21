@@ -661,7 +661,7 @@ impl NetlinkSocketListener for InterfaceManagerNetlinkSocketListener {
 mod tests {
     use std::collections::HashMap;
     use std::error::Error;
-    use std::net::IpAddr;
+
     use std::sync::atomic::AtomicBool;
     use std::sync::atomic::Ordering;
     use std::sync::Arc;
@@ -1938,35 +1938,83 @@ mod tests {
     #[tokio::test]
     pub async fn test_interface_listener_remove_link() -> Result<(), Box<dyn Error + Send + Sync>> {
         let config = Arc::new(generate_test_config());
-        let mut netlink_header = NetlinkHeader::default();
+        let netlink_header = NetlinkHeader::default();
 
-        let netlink_message = NetlinkMessage::new(netlink_header, NetlinkPayload::InnerMessage(RtnlMessage::DelLink({
-            let mut link_message = LinkMessage::default();
-            link_message.header = {
-                let mut link_header = LinkHeader::default();
-                link_header.index = 110;
-                link_header
-            };
-            link_message.nlas = vec![
-                netlink_packet_route::link::nlas::Nla::IfName(String::from("SomeDeviceA")),
-                netlink_packet_route::link::nlas::Nla::OperState(State::Down),
-            ];
-            link_message
-        })));
+        let netlink_message = NetlinkMessage::new(
+            netlink_header,
+            NetlinkPayload::InnerMessage(RtnlMessage::DelLink({
+                let mut link_message = LinkMessage::default();
+                link_message.header = {
+                    let mut link_header = LinkHeader::default();
+                    link_header.index = 110;
+                    link_header
+                };
+                link_message.nlas = vec![
+                    netlink_packet_route::link::nlas::Nla::IfName(String::from("SomeDeviceA")),
+                    netlink_packet_route::link::nlas::Nla::OperState(State::Down),
+                ];
+                link_message
+            })),
+        );
 
         let database = Arc::new(RwLock::new(InterfaceManagerDatabase::new()));
-        database.write().await.set_link_status_item(NetworkStatusItem::new(CanonicalNetworkId::new(Some(110), None, Some(String::from("SomeDeviceA"))), NetworkLinkStatus::new(None, String::from("SomeDeviceA"), NetworkLinkOperationalState::Down)));
-        database.write().await.set_link_status_item(NetworkStatusItem::new(CanonicalNetworkId::new(Some(101), Some(String::from("SomeLink2")), Some(String::from("SomeDevice2"))), NetworkLinkStatus::new(Some(String::from("SomeLink2")), String::from("SomeDevice2"), NetworkLinkOperationalState::Up)));
-        database.write().await.set_interface_status_item(NetworkStatusItem::new(CanonicalNetworkId::new(Some(110), None, Some(String::from("SomeDeviceA"))), NetworkInterfaceStatus::new(None, vec![], NetworkLinkStatus::new(None, String::from("SomeDeviceA"), NetworkLinkOperationalState::Down))));
+        database
+            .write()
+            .await
+            .set_link_status_item(NetworkStatusItem::new(
+                CanonicalNetworkId::new(Some(110), None, Some(String::from("SomeDeviceA"))),
+                NetworkLinkStatus::new(
+                    None,
+                    String::from("SomeDeviceA"),
+                    NetworkLinkOperationalState::Down,
+                ),
+            ));
+        database
+            .write()
+            .await
+            .set_link_status_item(NetworkStatusItem::new(
+                CanonicalNetworkId::new(
+                    Some(101),
+                    Some(String::from("SomeLink2")),
+                    Some(String::from("SomeDevice2")),
+                ),
+                NetworkLinkStatus::new(
+                    Some(String::from("SomeLink2")),
+                    String::from("SomeDevice2"),
+                    NetworkLinkOperationalState::Up,
+                ),
+            ));
+        database
+            .write()
+            .await
+            .set_interface_status_item(NetworkStatusItem::new(
+                CanonicalNetworkId::new(Some(110), None, Some(String::from("SomeDeviceA"))),
+                NetworkInterfaceStatus::new(
+                    None,
+                    vec![],
+                    NetworkLinkStatus::new(
+                        None,
+                        String::from("SomeDeviceA"),
+                        NetworkLinkOperationalState::Down,
+                    ),
+                ),
+            ));
 
-        let subject = InterfaceManagerNetlinkSocketListener::new(Arc::new(NetlinkMessageProcessor::new(config)), database.clone());
+        let subject = InterfaceManagerNetlinkSocketListener::new(
+            Arc::new(NetlinkMessageProcessor::new(config)),
+            database.clone(),
+        );
         subject.message_received(netlink_message).await;
 
-        assert_eq!(database.read().await.list_link_status(), vec![
-            NetworkLinkStatus::new(Some(String::from("SomeLink2")), String::from("SomeDevice2"), NetworkLinkOperationalState::Up),
-        ]);
-        assert_eq!(database.read().await.list_interface_status(), vec![
-        ]);
+        assert_eq!(
+            database.read().await.list_link_status(),
+            vec![NetworkLinkStatus::new(
+                Some(String::from("SomeLink2")),
+                String::from("SomeDevice2"),
+                NetworkLinkOperationalState::Up
+            ),]
+        );
+        assert_eq!(database.read().await.list_interface_status(), vec![]);
 
         Ok(())
     }
@@ -1974,37 +2022,105 @@ mod tests {
     #[tokio::test]
     pub async fn test_interface_listener_update_link() -> Result<(), Box<dyn Error + Send + Sync>> {
         let config = Arc::new(generate_test_config());
-        let mut netlink_header = NetlinkHeader::default();
+        let netlink_header = NetlinkHeader::default();
 
-        let netlink_message = NetlinkMessage::new(netlink_header, NetlinkPayload::InnerMessage(RtnlMessage::NewLink({
-            let mut link_message = LinkMessage::default();
-            link_message.header = {
-                let mut link_header = LinkHeader::default();
-                link_header.index = 101;
-                link_header
-            };
-            link_message.nlas = vec![
-                netlink_packet_route::link::nlas::Nla::IfName(String::from("SomeDevice2")),
-                netlink_packet_route::link::nlas::Nla::OperState(State::Down),
-            ];
-            link_message
-        })));
+        let netlink_message = NetlinkMessage::new(
+            netlink_header,
+            NetlinkPayload::InnerMessage(RtnlMessage::NewLink({
+                let mut link_message = LinkMessage::default();
+                link_message.header = {
+                    let mut link_header = LinkHeader::default();
+                    link_header.index = 101;
+                    link_header
+                };
+                link_message.nlas = vec![
+                    netlink_packet_route::link::nlas::Nla::IfName(String::from("SomeDevice2")),
+                    netlink_packet_route::link::nlas::Nla::OperState(State::Down),
+                ];
+                link_message
+            })),
+        );
 
         let database = Arc::new(RwLock::new(InterfaceManagerDatabase::new()));
-        database.write().await.set_link_status_item(NetworkStatusItem::new(CanonicalNetworkId::new(Some(110), None, Some(String::from("SomeDeviceA"))), NetworkLinkStatus::new(None, String::from("SomeDeviceA"), NetworkLinkOperationalState::Down)));
-        database.write().await.set_link_status_item(NetworkStatusItem::new(CanonicalNetworkId::new(Some(101), Some(String::from("SomeLink2")), Some(String::from("SomeDevice2"))), NetworkLinkStatus::new(Some(String::from("SomeLink2")), String::from("SomeDevice2"), NetworkLinkOperationalState::Up)));
-        database.write().await.set_interface_status_item(NetworkStatusItem::new(CanonicalNetworkId::new(Some(101), Some(String::from("SomeLink2")), Some(String::from("SomeInterface2"))), NetworkInterfaceStatus::new(Some(String::from("NetworkInterface2")), vec![], NetworkLinkStatus::new(Some(String::from("SomeLink2")), String::from("SomeDevice2"), NetworkLinkOperationalState::Up))));
+        database
+            .write()
+            .await
+            .set_link_status_item(NetworkStatusItem::new(
+                CanonicalNetworkId::new(Some(110), None, Some(String::from("SomeDeviceA"))),
+                NetworkLinkStatus::new(
+                    None,
+                    String::from("SomeDeviceA"),
+                    NetworkLinkOperationalState::Down,
+                ),
+            ));
+        database
+            .write()
+            .await
+            .set_link_status_item(NetworkStatusItem::new(
+                CanonicalNetworkId::new(
+                    Some(101),
+                    Some(String::from("SomeLink2")),
+                    Some(String::from("SomeDevice2")),
+                ),
+                NetworkLinkStatus::new(
+                    Some(String::from("SomeLink2")),
+                    String::from("SomeDevice2"),
+                    NetworkLinkOperationalState::Up,
+                ),
+            ));
+        database
+            .write()
+            .await
+            .set_interface_status_item(NetworkStatusItem::new(
+                CanonicalNetworkId::new(
+                    Some(101),
+                    Some(String::from("SomeLink2")),
+                    Some(String::from("SomeInterface2")),
+                ),
+                NetworkInterfaceStatus::new(
+                    Some(String::from("NetworkInterface2")),
+                    vec![],
+                    NetworkLinkStatus::new(
+                        Some(String::from("SomeLink2")),
+                        String::from("SomeDevice2"),
+                        NetworkLinkOperationalState::Up,
+                    ),
+                ),
+            ));
 
-        let subject = InterfaceManagerNetlinkSocketListener::new(Arc::new(NetlinkMessageProcessor::new(config)), database.clone());
+        let subject = InterfaceManagerNetlinkSocketListener::new(
+            Arc::new(NetlinkMessageProcessor::new(config)),
+            database.clone(),
+        );
         subject.message_received(netlink_message).await;
 
-        assert_eq!(database.read().await.list_link_status(), vec![
-            NetworkLinkStatus::new(None, String::from("SomeDeviceA"), NetworkLinkOperationalState::Down),
-            NetworkLinkStatus::new(Some(String::from("SomeLink2")), String::from("SomeDevice2"), NetworkLinkOperationalState::Down),
-        ]);
-        assert_eq!(database.read().await.list_interface_status(), vec![
-            NetworkInterfaceStatus::new(Some(String::from("NetworkInterface2")), vec![], NetworkLinkStatus::new(Some(String::from("SomeLink2")), String::from("SomeDevice2"), NetworkLinkOperationalState::Down)),
-        ]);
+        assert_eq!(
+            database.read().await.list_link_status(),
+            vec![
+                NetworkLinkStatus::new(
+                    None,
+                    String::from("SomeDeviceA"),
+                    NetworkLinkOperationalState::Down
+                ),
+                NetworkLinkStatus::new(
+                    Some(String::from("SomeLink2")),
+                    String::from("SomeDevice2"),
+                    NetworkLinkOperationalState::Down
+                ),
+            ]
+        );
+        assert_eq!(
+            database.read().await.list_interface_status(),
+            vec![NetworkInterfaceStatus::new(
+                Some(String::from("NetworkInterface2")),
+                vec![],
+                NetworkLinkStatus::new(
+                    Some(String::from("SomeLink2")),
+                    String::from("SomeDevice2"),
+                    NetworkLinkOperationalState::Down
+                )
+            ),]
+        );
 
         Ok(())
     }
@@ -2012,73 +2128,178 @@ mod tests {
     #[tokio::test]
     pub async fn test_interface_listener_new_address() -> Result<(), Box<dyn Error + Send + Sync>> {
         let config = Arc::new(generate_test_config());
-        let mut netlink_header = NetlinkHeader::default();
+        let netlink_header = NetlinkHeader::default();
 
-        let netlink_message = NetlinkMessage::new(netlink_header, NetlinkPayload::InnerMessage(RtnlMessage::NewAddress({
-            let mut link_message = AddressMessage::default();
-            link_message.header = {
-                let mut link_header = AddressHeader::default();
-                link_header.index = 101;
-                link_header.family = netlink_packet_route::AF_INET as u8;
-                link_header.prefix_len = 24;
-                link_header
-            };
-            link_message.nlas = vec![
-                netlink_packet_route::address::nlas::Nla::Address(vec![192, 168, 1, 1]),
-            ];
-            link_message
-        })));
+        let netlink_message = NetlinkMessage::new(
+            netlink_header,
+            NetlinkPayload::InnerMessage(RtnlMessage::NewAddress({
+                let mut link_message = AddressMessage::default();
+                link_message.header = {
+                    let mut link_header = AddressHeader::default();
+                    link_header.index = 101;
+                    link_header.family = netlink_packet_route::AF_INET as u8;
+                    link_header.prefix_len = 24;
+                    link_header
+                };
+                link_message.nlas = vec![netlink_packet_route::address::nlas::Nla::Address(vec![
+                    192, 168, 1, 1,
+                ])];
+                link_message
+            })),
+        );
 
         let database = Arc::new(RwLock::new(InterfaceManagerDatabase::new()));
-        database.write().await.set_link_status_item(NetworkStatusItem::new(CanonicalNetworkId::new(Some(101), Some(String::from("SomeLink2")), Some(String::from("SomeDevice2"))), NetworkLinkStatus::new(Some(String::from("SomeLink2")), String::from("SomeDevice2"), NetworkLinkOperationalState::Up)));
-        database.write().await.set_interface_status_item(NetworkStatusItem::new(CanonicalNetworkId::new(Some(101), Some(String::from("SomeLink2")), Some(String::from("SomeInterface2"))), NetworkInterfaceStatus::new(Some(String::from("NetworkInterface2")), vec![], NetworkLinkStatus::new(Some(String::from("SomeLink2")), String::from("SomeDevice2"), NetworkLinkOperationalState::Up))));
+        database
+            .write()
+            .await
+            .set_link_status_item(NetworkStatusItem::new(
+                CanonicalNetworkId::new(
+                    Some(101),
+                    Some(String::from("SomeLink2")),
+                    Some(String::from("SomeDevice2")),
+                ),
+                NetworkLinkStatus::new(
+                    Some(String::from("SomeLink2")),
+                    String::from("SomeDevice2"),
+                    NetworkLinkOperationalState::Up,
+                ),
+            ));
+        database
+            .write()
+            .await
+            .set_interface_status_item(NetworkStatusItem::new(
+                CanonicalNetworkId::new(
+                    Some(101),
+                    Some(String::from("SomeLink2")),
+                    Some(String::from("SomeInterface2")),
+                ),
+                NetworkInterfaceStatus::new(
+                    Some(String::from("NetworkInterface2")),
+                    vec![],
+                    NetworkLinkStatus::new(
+                        Some(String::from("SomeLink2")),
+                        String::from("SomeDevice2"),
+                        NetworkLinkOperationalState::Up,
+                    ),
+                ),
+            ));
 
-        let subject = InterfaceManagerNetlinkSocketListener::new(Arc::new(NetlinkMessageProcessor::new(config)), database.clone());
+        let subject = InterfaceManagerNetlinkSocketListener::new(
+            Arc::new(NetlinkMessageProcessor::new(config)),
+            database.clone(),
+        );
         subject.message_received(netlink_message).await;
 
-        assert_eq!(database.read().await.list_link_status(), vec![
-            NetworkLinkStatus::new(Some(String::from("SomeLink2")), String::from("SomeDevice2"), NetworkLinkOperationalState::Up),
-        ]);
-        assert_eq!(database.read().await.list_interface_status(), vec![
-            NetworkInterfaceStatus::new(Some(String::from("NetworkInterface2")), vec![IpAddress("192.168.1.1".parse()?, 24)], NetworkLinkStatus::new(Some(String::from("SomeLink2")), String::from("SomeDevice2"), NetworkLinkOperationalState::Up)),
-        ]);
+        assert_eq!(
+            database.read().await.list_link_status(),
+            vec![NetworkLinkStatus::new(
+                Some(String::from("SomeLink2")),
+                String::from("SomeDevice2"),
+                NetworkLinkOperationalState::Up
+            ),]
+        );
+        assert_eq!(
+            database.read().await.list_interface_status(),
+            vec![NetworkInterfaceStatus::new(
+                Some(String::from("NetworkInterface2")),
+                vec![IpAddress("192.168.1.1".parse()?, 24)],
+                NetworkLinkStatus::new(
+                    Some(String::from("SomeLink2")),
+                    String::from("SomeDevice2"),
+                    NetworkLinkOperationalState::Up
+                )
+            ),]
+        );
 
         Ok(())
     }
 
     #[tokio::test]
-    pub async fn test_interface_listener_delete_address() -> Result<(), Box<dyn Error + Send + Sync>> {
+    pub async fn test_interface_listener_delete_address() -> Result<(), Box<dyn Error + Send + Sync>>
+    {
         let config = Arc::new(generate_test_config());
-        let mut netlink_header = NetlinkHeader::default();
+        let netlink_header = NetlinkHeader::default();
 
-        let netlink_message = NetlinkMessage::new(netlink_header, NetlinkPayload::InnerMessage(RtnlMessage::DelAddress({
-            let mut link_message = AddressMessage::default();
-            link_message.header = {
-                let mut link_header = AddressHeader::default();
-                link_header.index = 101;
-                link_header.family = netlink_packet_route::AF_INET as u8;
-                link_header.prefix_len = 24;
-                link_header
-            };
-            link_message.nlas = vec![
-                netlink_packet_route::address::nlas::Nla::Address(vec![192, 168, 1, 1]),
-            ];
-            link_message
-        })));
+        let netlink_message = NetlinkMessage::new(
+            netlink_header,
+            NetlinkPayload::InnerMessage(RtnlMessage::DelAddress({
+                let mut link_message = AddressMessage::default();
+                link_message.header = {
+                    let mut link_header = AddressHeader::default();
+                    link_header.index = 101;
+                    link_header.family = netlink_packet_route::AF_INET as u8;
+                    link_header.prefix_len = 24;
+                    link_header
+                };
+                link_message.nlas = vec![netlink_packet_route::address::nlas::Nla::Address(vec![
+                    192, 168, 1, 1,
+                ])];
+                link_message
+            })),
+        );
 
         let database = Arc::new(RwLock::new(InterfaceManagerDatabase::new()));
-        database.write().await.set_link_status_item(NetworkStatusItem::new(CanonicalNetworkId::new(Some(101), Some(String::from("SomeLink2")), Some(String::from("SomeDevice2"))), NetworkLinkStatus::new(Some(String::from("SomeLink2")), String::from("SomeDevice2"), NetworkLinkOperationalState::Up)));
-        database.write().await.set_interface_status_item(NetworkStatusItem::new(CanonicalNetworkId::new(Some(101), Some(String::from("SomeLink2")), Some(String::from("SomeInterface2"))), NetworkInterfaceStatus::new(Some(String::from("NetworkInterface2")), vec![], NetworkLinkStatus::new(Some(String::from("SomeLink2")), String::from("SomeDevice2"), NetworkLinkOperationalState::Up))));
+        database
+            .write()
+            .await
+            .set_link_status_item(NetworkStatusItem::new(
+                CanonicalNetworkId::new(
+                    Some(101),
+                    Some(String::from("SomeLink2")),
+                    Some(String::from("SomeDevice2")),
+                ),
+                NetworkLinkStatus::new(
+                    Some(String::from("SomeLink2")),
+                    String::from("SomeDevice2"),
+                    NetworkLinkOperationalState::Up,
+                ),
+            ));
+        database
+            .write()
+            .await
+            .set_interface_status_item(NetworkStatusItem::new(
+                CanonicalNetworkId::new(
+                    Some(101),
+                    Some(String::from("SomeLink2")),
+                    Some(String::from("SomeInterface2")),
+                ),
+                NetworkInterfaceStatus::new(
+                    Some(String::from("NetworkInterface2")),
+                    vec![],
+                    NetworkLinkStatus::new(
+                        Some(String::from("SomeLink2")),
+                        String::from("SomeDevice2"),
+                        NetworkLinkOperationalState::Up,
+                    ),
+                ),
+            ));
 
-        let subject = InterfaceManagerNetlinkSocketListener::new(Arc::new(NetlinkMessageProcessor::new(config)), database.clone());
+        let subject = InterfaceManagerNetlinkSocketListener::new(
+            Arc::new(NetlinkMessageProcessor::new(config)),
+            database.clone(),
+        );
         subject.message_received(netlink_message).await;
 
-        assert_eq!(database.read().await.list_link_status(), vec![
-            NetworkLinkStatus::new(Some(String::from("SomeLink2")), String::from("SomeDevice2"), NetworkLinkOperationalState::Up),
-        ]);
-        assert_eq!(database.read().await.list_interface_status(), vec![
-            NetworkInterfaceStatus::new(Some(String::from("NetworkInterface2")), vec![], NetworkLinkStatus::new(Some(String::from("SomeLink2")), String::from("SomeDevice2"), NetworkLinkOperationalState::Up)),
-        ]);
+        assert_eq!(
+            database.read().await.list_link_status(),
+            vec![NetworkLinkStatus::new(
+                Some(String::from("SomeLink2")),
+                String::from("SomeDevice2"),
+                NetworkLinkOperationalState::Up
+            ),]
+        );
+        assert_eq!(
+            database.read().await.list_interface_status(),
+            vec![NetworkInterfaceStatus::new(
+                Some(String::from("NetworkInterface2")),
+                vec![],
+                NetworkLinkStatus::new(
+                    Some(String::from("SomeLink2")),
+                    String::from("SomeDevice2"),
+                    NetworkLinkOperationalState::Up
+                )
+            ),]
+        );
 
         Ok(())
     }

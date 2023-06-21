@@ -11,7 +11,7 @@ use nix::{
 };
 use rusty_router_common::prelude::*;
 use rusty_router_model::{InetPacketNetworkInterface, NetworkEventHandler};
-use rusty_router_proto_ip::{IpV4Header, IpV4HeaderBuilder};
+use rusty_router_proto_ip::IpV4HeaderBuilder;
 use std::collections::HashMap;
 use std::os::raw::c_int;
 use std::os::raw::c_void;

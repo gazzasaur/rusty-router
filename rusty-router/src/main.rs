@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 use env_logger;
 use log::{error, warn};
-use std::{error::Error, net::Ipv4Addr};
+use std::error::Error;
 use std::sync::Arc;
 use std::collections::HashMap;
 use rusty_router_model::{RustyRouter, NetworkEventHandler};
