@@ -119,67 +119,238 @@ impl NetlinkMessageProcessor {
 
 #[cfg(test)]
 mod tests {
-    use std::error::Error;
+    use std::{collections::HashMap, error::Error, sync::Arc};
+
+    use crate::netlink::NetlinkMessageProcessor;
+    use netlink_packet_core::{NetlinkHeader, NetlinkMessage, NetlinkPayload};
+    use netlink_packet_route::{nlas::link::State, LinkHeader, LinkMessage, RtnlMessage};
+    use rusty_router_model::{NetworkLink, NetworkLinkStatus, NetworkLinkType, Router};
 
     #[tokio::test]
     pub async fn test_process_link_message() -> Result<(), Box<dyn Error + Send + Sync>> {
-        // let netlink_header = NetlinkHeader { sequence_number: random(), flags: random(), port_number: random(), length: random(), message_type: random() };
+        let netlink_header = NetlinkHeader::default();
 
-        // let config = Arc::new(Router::new(HashMap::new(), HashMap::new(), HashMap::new()));
-        // let subject = NetlinkMessageProcessor::new(config);
+        let config = Arc::new(Router::new(HashMap::new(), HashMap::new(), HashMap::new()));
+        let subject = NetlinkMessageProcessor::new(config);
 
-        // assert!(subject.process_link_message(NetlinkMessage { header: netlink_header, payload: NetlinkPayload::InnerMessage(RtnlMessage::NewLink(LinkMessage {
-        //     header: LinkHeader { index: random(), link_layer_type: random(), change_mask: random(), flags: random(), interface_family: random() },
-        //     nlas: vec![]
-        // })) }) == None);
+        assert!(
+            subject.process_link_message(NetlinkMessage::new(
+                netlink_header,
+                NetlinkPayload::InnerMessage(RtnlMessage::NewLink({
+                    let mut link_message = LinkMessage::default();
+                    link_message.nlas = vec![];
+                    link_message
+                }))
+            )) == None
+        );
 
-        // assert!(subject.process_link_message(NetlinkMessage { header: netlink_header, payload: NetlinkPayload::InnerMessage(RtnlMessage::NewLink(LinkMessage {
-        //     header: LinkHeader { index: 10, link_layer_type: random(), change_mask: random(), flags: random(), interface_family: random() },
-        //     nlas: vec![netlink_packet_route::link::nlas::Nla::IfName(String::from("SomeDevice"))]
-        // })) }) == Some((10, NetworkLinkStatus::new(None, String::from("SomeDevice"), rusty_router_model::NetworkLinkOperationalState::Unknown))));
+        assert!(
+            subject.process_link_message(NetlinkMessage::new(
+                netlink_header,
+                NetlinkPayload::InnerMessage(RtnlMessage::NewLink({
+                    let mut link_message = LinkMessage::default();
+                    link_message.header = {
+                        let mut link_header = LinkHeader::default();
+                        link_header.index = 10;
+                        link_header
+                    };
+                    link_message.nlas = vec![netlink_packet_route::link::nlas::Nla::IfName(
+                        String::from("SomeDevice"),
+                    )];
+                    link_message
+                }))
+            )) == Some((
+                10,
+                NetworkLinkStatus::new(
+                    None,
+                    String::from("SomeDevice"),
+                    rusty_router_model::NetworkLinkOperationalState::Unknown
+                )
+            ))
+        );
 
-        // assert!(subject.process_link_message(NetlinkMessage { header: netlink_header, payload: NetlinkPayload::InnerMessage(RtnlMessage::NewLink(LinkMessage {
-        //     header: LinkHeader { index: 10, link_layer_type: random(), change_mask: random(), flags: random(), interface_family: random() },
-        //     nlas: vec![netlink_packet_route::link::nlas::Nla::IfName(String::from("SomeDevice"))]
-        // })) }) == Some((10, NetworkLinkStatus::new(None, String::from("SomeDevice"), rusty_router_model::NetworkLinkOperationalState::Unknown))));
+        assert!(
+            subject.process_link_message(NetlinkMessage::new(
+                netlink_header,
+                NetlinkPayload::InnerMessage(RtnlMessage::NewLink({
+                    let mut link_message = LinkMessage::default();
+                    link_message.header = {
+                        let mut link_header = LinkHeader::default();
+                        link_header.index = 10;
+                        link_header
+                    };
+                    link_message.nlas = vec![netlink_packet_route::link::nlas::Nla::IfName(
+                        String::from("SomeDevice"),
+                    )];
+                    link_message
+                }))
+            )) == Some((
+                10,
+                NetworkLinkStatus::new(
+                    None,
+                    String::from("SomeDevice"),
+                    rusty_router_model::NetworkLinkOperationalState::Unknown
+                )
+            ))
+        );
 
-        // assert!(subject.process_link_message(NetlinkMessage { header: netlink_header, payload: NetlinkPayload::InnerMessage(RtnlMessage::NewLink(LinkMessage {
-        //     header: LinkHeader { index: 15, link_layer_type: random(), change_mask: random(), flags: random(), interface_family: random() },
-        //     nlas: vec![netlink_packet_route::link::nlas::Nla::IfName(String::from("SomeDevice1")), netlink_packet_route::link::nlas::Nla::OperState(State::Up)]
-        // })) }) == Some((15, NetworkLinkStatus::new(None, String::from("SomeDevice1"), rusty_router_model::NetworkLinkOperationalState::Up))));
+        assert!(
+            subject.process_link_message(NetlinkMessage::new(
+                netlink_header,
+                NetlinkPayload::InnerMessage(RtnlMessage::NewLink({
+                    let mut link_message = LinkMessage::default();
+                    link_message.header = {
+                        let mut link_header = LinkHeader::default();
+                        link_header.index = 15;
+                        link_header
+                    };
+                    link_message.nlas = vec![
+                        netlink_packet_route::link::nlas::Nla::IfName(String::from("SomeDevice1")),
+                        netlink_packet_route::link::nlas::Nla::OperState(State::Up),
+                    ];
+                    link_message
+                }))
+            )) == Some((
+                15,
+                NetworkLinkStatus::new(
+                    None,
+                    String::from("SomeDevice1"),
+                    rusty_router_model::NetworkLinkOperationalState::Up
+                )
+            ))
+        );
 
-        // assert!(subject.process_link_message(NetlinkMessage { header: netlink_header, payload: NetlinkPayload::InnerMessage(RtnlMessage::DelLink(LinkMessage {
-        //     header: LinkHeader { index: 15, link_layer_type: random(), change_mask: random(), flags: random(), interface_family: random() },
-        //     nlas: vec![netlink_packet_route::link::nlas::Nla::IfName(String::from("SomeDevice1")), netlink_packet_route::link::nlas::Nla::OperState(State::Other(100))]
-        // })) }) == Some((15, NetworkLinkStatus::new(None, String::from("SomeDevice1"), rusty_router_model::NetworkLinkOperationalState::Unknown))));
+        assert!(
+            subject.process_link_message(NetlinkMessage::new(
+                netlink_header,
+                NetlinkPayload::InnerMessage(RtnlMessage::DelLink({
+                    let mut link_message = LinkMessage::default();
+                    link_message.header = {
+                        let mut link_header = LinkHeader::default();
+                        link_header.index = 15;
+                        link_header
+                    };
+                    link_message.nlas = vec![
+                        netlink_packet_route::link::nlas::Nla::IfName(String::from("SomeDevice1")),
+                        netlink_packet_route::link::nlas::Nla::OperState(State::Other(100)),
+                    ];
+                    link_message
+                }))
+            )) == Some((
+                15,
+                NetworkLinkStatus::new(
+                    None,
+                    String::from("SomeDevice1"),
+                    rusty_router_model::NetworkLinkOperationalState::Unknown
+                )
+            ))
+        );
 
-        // // This one logs an error message and continues.  There is nothing a user can really do here.  It really should not be possible to reach.
-        // assert!(subject.process_link_message(NetlinkMessage { header: netlink_header, payload: NetlinkPayload::InnerMessage(RtnlMessage::GetLink(LinkMessage {
-        //     header: LinkHeader { index: 15, link_layer_type: random(), change_mask: random(), flags: random(), interface_family: random() },
-        //     nlas: vec![netlink_packet_route::link::nlas::Nla::IfName(String::from("SomeDevice1")), netlink_packet_route::link::nlas::Nla::OperState(State::Other(100))]
-        // })) }) == None);
+        // This one logs an error message and continues.  There is nothing a user can really do here.  It really should not be possible to reach.
+        assert!(
+            subject.process_link_message(NetlinkMessage::new(
+                netlink_header,
+                NetlinkPayload::InnerMessage(RtnlMessage::GetLink({
+                    let mut link_message = LinkMessage::default();
+                    link_message.header = {
+                        let mut link_header = LinkHeader::default();
+                        link_header.index = 15;
+                        link_header
+                    };
+                    link_message.nlas = vec![
+                        netlink_packet_route::link::nlas::Nla::IfName(String::from("SomeDevice1")),
+                        netlink_packet_route::link::nlas::Nla::OperState(State::Other(100)),
+                    ];
+                    link_message
+                }))
+            )) == None
+        );
 
-        // let config = Arc::new(Router::new(vec![
-        //     (String::from("NetworkLink1"), NetworkLink::new(String::from("Device1"), NetworkLinkType::GenericInterface)),
-        //     (String::from("NetworkLink2"), NetworkLink::new(String::from("Device2"), NetworkLinkType::GenericInterface)),
-        //     (String::from("NetworkLink3"), NetworkLink::new(String::from("Device3"), NetworkLinkType::GenericInterface)),
-        // ].drain(..).collect(), HashMap::new(), HashMap::new()));
-        // let subject = NetlinkMessageProcessor::new(config);
+        let config = Arc::new(Router::new(
+            vec![
+                (
+                    String::from("NetworkLink1"),
+                    NetworkLink::new(String::from("Device1"), NetworkLinkType::GenericInterface),
+                ),
+                (
+                    String::from("NetworkLink2"),
+                    NetworkLink::new(String::from("Device2"), NetworkLinkType::GenericInterface),
+                ),
+                (
+                    String::from("NetworkLink3"),
+                    NetworkLink::new(String::from("Device3"), NetworkLinkType::GenericInterface),
+                ),
+            ]
+            .drain(..)
+            .collect(),
+            HashMap::new(),
+            HashMap::new(),
+        ));
+        let subject = NetlinkMessageProcessor::new(config);
 
-        // assert!(subject.process_link_message(NetlinkMessage { header: netlink_header, payload: NetlinkPayload::InnerMessage(RtnlMessage::NewLink(LinkMessage {
-        //     header: LinkHeader { index: random(), link_layer_type: random(), change_mask: random(), flags: random(), interface_family: random() },
-        //     nlas: vec![]
-        // })) }) == None);
+        assert!(
+            subject.process_link_message(NetlinkMessage::new(
+                netlink_header,
+                NetlinkPayload::InnerMessage(RtnlMessage::NewLink({
+                    let mut link_message = LinkMessage::default();
+                    link_message.header = LinkHeader::default();
+                    link_message.nlas = vec![];
+                    link_message
+                }))
+            )) == None
+        );
 
-        // assert!(subject.process_link_message(NetlinkMessage { header: netlink_header, payload: NetlinkPayload::InnerMessage(RtnlMessage::NewLink(LinkMessage {
-        //     header: LinkHeader { index: 15, link_layer_type: random(), change_mask: random(), flags: random(), interface_family: random() },
-        //     nlas: vec![netlink_packet_route::link::nlas::Nla::IfName(String::from("SomeDevice1")), netlink_packet_route::link::nlas::Nla::OperState(State::Up)]
-        // })) }) == Some((15, NetworkLinkStatus::new(None, String::from("SomeDevice1"), rusty_router_model::NetworkLinkOperationalState::Up))));
+        assert!(
+            subject.process_link_message(NetlinkMessage::new(
+                netlink_header,
+                NetlinkPayload::InnerMessage(RtnlMessage::NewLink({
+                    let mut link_message = LinkMessage::default();
+                    link_message.header = {
+                        let mut link_header = LinkHeader::default();
+                        link_header.index = 15;
+                        link_header
+                    };
+                    link_message.nlas = vec![
+                        netlink_packet_route::link::nlas::Nla::IfName(String::from("SomeDevice1")),
+                        netlink_packet_route::link::nlas::Nla::OperState(State::Up),
+                    ];
+                    link_message
+                }))
+            )) == Some((
+                15,
+                NetworkLinkStatus::new(
+                    None,
+                    String::from("SomeDevice1"),
+                    rusty_router_model::NetworkLinkOperationalState::Up
+                )
+            ))
+        );
 
-        // assert!(subject.process_link_message(NetlinkMessage { header: netlink_header, payload: NetlinkPayload::InnerMessage(RtnlMessage::NewLink(LinkMessage {
-        //     header: LinkHeader { index: 20, link_layer_type: random(), change_mask: random(), flags: random(), interface_family: random() },
-        //     nlas: vec![netlink_packet_route::link::nlas::Nla::IfName(String::from("Device2")), netlink_packet_route::link::nlas::Nla::OperState(State::Down)]
-        // })) }) == Some((20, NetworkLinkStatus::new(Some(String::from("NetworkLink2")), String::from("Device2"), rusty_router_model::NetworkLinkOperationalState::Down))));
+        assert!(
+            subject.process_link_message(NetlinkMessage::new(
+                netlink_header,
+                NetlinkPayload::InnerMessage(RtnlMessage::NewLink({
+                    let mut link_message = LinkMessage::default();
+                    link_message.header = {
+                        let mut link_header = LinkHeader::default();
+                        link_header.index = 20;
+                        link_header
+                    };
+                    link_message.nlas = vec![
+                        netlink_packet_route::link::nlas::Nla::IfName(String::from("Device2")),
+                        netlink_packet_route::link::nlas::Nla::OperState(State::Down),
+                    ];
+                    link_message
+                }))
+            )) == Some((
+                20,
+                NetworkLinkStatus::new(
+                    Some(String::from("NetworkLink2")),
+                    String::from("Device2"),
+                    rusty_router_model::NetworkLinkOperationalState::Down
+                )
+            ))
+        );
 
         Ok(())
     }
