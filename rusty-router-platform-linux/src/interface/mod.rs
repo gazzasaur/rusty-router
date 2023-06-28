@@ -10,8 +10,8 @@ use std::collections::HashMap;
 use std::ops::Add;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
-use tokio::sync::mpsc::Sender;
 use std::time::Duration;
+use tokio::sync::mpsc::Sender;
 
 use async_trait::async_trait;
 use log::error;
@@ -46,7 +46,7 @@ pub enum NetworkStatusUpdate {
 pub struct InterfaceManager {
     running: Arc<AtomicBool>,
     database: Arc<RwLock<InterfaceManagerDatabase>>,
-    subscribers: Arc<RwLock<Vec<Sender<NetworkLinkStatus>>>>,
+    subscribers: Arc<RwLock<Vec<Sender<NetworkStatusUpdate>>>>,
 }
 impl InterfaceManager {
     pub async fn new(
@@ -76,6 +76,7 @@ impl InterfaceManager {
             database.clone(),
             netlink_socket.clone(),
             netlink_message_processor.clone(),
+            subscribers.clone(),
         )
         .await;
         Ok(interface_manaer)
@@ -87,6 +88,10 @@ impl InterfaceManager {
 
     pub async fn list_network_interfaces(&self) -> Vec<NetworkInterfaceStatus> {
         self.database.read().await.list_interface_status()
+    }
+
+    pub async fn subscribe(&self, subscriber: Sender<NetworkStatusUpdate>) {
+        self.subscribers.write().await.push(subscriber);
     }
 }
 impl Drop for InterfaceManager {
@@ -101,6 +106,7 @@ struct InterfaceManagerWorker {
     database: Arc<RwLock<InterfaceManagerDatabase>>,
     netlink_socket: Arc<dyn NetlinkSocket + Send + Sync>,
     netlink_message_processor: Arc<NetlinkMessageProcessor>,
+    subscribers: Arc<RwLock<Vec<Sender<NetworkStatusUpdate>>>>,
 }
 impl InterfaceManagerWorker {
     pub async fn start(
@@ -109,6 +115,7 @@ impl InterfaceManagerWorker {
         database: Arc<RwLock<InterfaceManagerDatabase>>,
         netlink_socket: Arc<dyn NetlinkSocket + Send + Sync>,
         netlink_message_processor: Arc<NetlinkMessageProcessor>,
+        subscribers: Arc<RwLock<Vec<Sender<NetworkStatusUpdate>>>>,
     ) {
         let worker = InterfaceManagerWorker {
             config,
@@ -116,6 +123,7 @@ impl InterfaceManagerWorker {
             database,
             netlink_socket,
             netlink_message_processor,
+            subscribers,
         };
 
         worker.poll().await;
@@ -805,12 +813,14 @@ mod tests {
 
         let running = Arc::new(AtomicBool::new(false));
         let database = Arc::new(RwLock::new(InterfaceManagerDatabase::new()));
+        let subscribers = Arc::new(RwLock::new(Vec::new()));
         let subject = InterfaceManagerWorker {
             config,
             running: running.clone(),
             database: database.clone(),
             netlink_socket: Arc::new(mock_netlink_socket),
             netlink_message_processor,
+            subscribers,
         };
 
         subject.poll().await;
@@ -1075,12 +1085,14 @@ mod tests {
 
         let running = Arc::new(AtomicBool::new(false));
         let database = Arc::new(RwLock::new(InterfaceManagerDatabase::new()));
+        let subscribers = Arc::new(RwLock::new(Vec::new()));
         let subject = InterfaceManagerWorker {
             config,
             running: running.clone(),
             database: database.clone(),
             netlink_socket: Arc::new(mock_netlink_socket),
             netlink_message_processor,
+            subscribers,
         };
 
         subject.poll().await;
@@ -1638,12 +1650,14 @@ mod tests {
 
         let running = Arc::new(AtomicBool::new(false));
         let database = Arc::new(RwLock::new(InterfaceManagerDatabase::new()));
+        let subscribers = Arc::new(RwLock::new(Vec::new()));
         let subject = InterfaceManagerWorker {
             config,
             running: running.clone(),
             database: database.clone(),
             netlink_socket: Arc::new(mock_netlink_socket),
             netlink_message_processor,
+            subscribers,
         };
 
         subject.poll().await;
