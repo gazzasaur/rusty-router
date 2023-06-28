@@ -4,8 +4,9 @@ use async_trait::async_trait;
 use interface::InterfaceManager;
 use rusty_router_common::prelude::*;
 
-use rusty_router_model::{InetPacketNetworkInterface, NetworkEventHandler, NetworkInterfaceStatus, RustyRouter};
+use rusty_router_model::{InetPacketNetworkInterface, NetworkEventHandler, NetworkInterfaceStatus, RustyRouter, NetworkStatusUpdate};
 use rusty_router_model::RustyRouterInstance;
+use tokio::sync::mpsc::Sender;
 
 use crate::network::LinuxInetPacketNetworkInterface;
 
@@ -48,6 +49,10 @@ impl RustyRouterInstance for LinuxRustyRouterInstance {
 
     async fn connect_ipv4(&self, network_interface: &String, source: Ipv4Addr, protocol: u8, multicast_groups: Vec<Ipv4Addr>, handler: Box<dyn NetworkEventHandler + Send + Sync>) -> Result<Box<dyn InetPacketNetworkInterface + Send + Sync>> {
         Ok(self.platform.connect_ipv4(network_interface, source, protocol, multicast_groups, handler).await?)
+    }
+
+    async fn subscribe(&self, subscriber: Sender<NetworkStatusUpdate>) {
+        self.platform.subscribe(subscriber).await;
     }
 }
 
@@ -92,6 +97,10 @@ impl RustyRouterInstance for LinuxRustyRouterPlatform {
             Some(device) => return Ok(Box::new(LinuxInetPacketNetworkInterface::new(device, source, protocol, multicast_groups, handler, &self.network_poller).await?)),
             None => return Err(Error::IllegalState(format!("Failed to find a device matching {}", network_interface))),
         }
+    }
+
+    async fn subscribe(&self, subscriber: Sender<NetworkStatusUpdate>) {
+        self.interface_manager.subscribe(subscriber).await;
     }
 }
 

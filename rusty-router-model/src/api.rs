@@ -1,6 +1,7 @@
-use crate::status::{NetworkInterfaceStatus, NetworkLinkStatus};
+use crate::{status::{NetworkInterfaceStatus, NetworkLinkStatus}, NetworkStatusUpdate};
 use async_trait::async_trait;
 use rusty_router_common::prelude::*;
+use tokio::sync::mpsc::Sender;
 use std::net::Ipv4Addr;
 
 /**
@@ -30,6 +31,9 @@ pub trait RustyRouterInstance {
         multicast_groups: Vec<Ipv4Addr>,
         handler: Box<dyn NetworkEventHandler + Send + Sync>,
     ) -> Result<Box<dyn InetPacketNetworkInterface + Send + Sync>>;
+
+    // TODO Should wrap tokio to avoid framework dependence on the api layer
+    async fn subscribe(&self, subscriber: Sender<NetworkStatusUpdate>);
 }
 
 #[async_trait]

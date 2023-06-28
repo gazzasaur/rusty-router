@@ -177,7 +177,7 @@ impl DefaultNetlinkSocket {
     ) -> Result<RecvState> {
         loop {
             let recv_result = if let Ok(recv_result) = tokio::time::timeout(
-                std::time::Duration::from_millis(1000),
+                std::time::Duration::from_millis(100),
                 socket.recv_from_full(),
             )
             .await

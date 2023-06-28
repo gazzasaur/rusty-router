@@ -2,6 +2,12 @@ use std::fmt::{Display, Formatter};
 use serde::{Serialize, Deserialize};
 
 #[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Clone)]
+pub enum NetworkStatusUpdate {
+    Link(NetworkLinkStatus),
+    Interface(NetworkInterfaceStatus),
+}
+
+#[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Clone)]
 pub struct NetworkLinkStatus {
     name: Option<String>,
     device: String,

@@ -11,6 +11,7 @@ use std::ops::Add;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
+use rusty_router_model::NetworkStatusUpdate;
 use tokio::sync::mpsc::Sender;
 
 use async_trait::async_trait;
@@ -30,11 +31,6 @@ use rusty_router_common::prelude::*;
 
 const ENTROPY_HOLD_PERIOD_SECONDS: u64 = 5;
 const ENTROPY_SCAN_PERIOD_SECONDS: u64 = 10;
-
-pub enum NetworkStatusUpdate {
-    Link(NetworkLinkStatus),
-    Interface(NetworkInterfaceStatus),
-}
 
 /**
  * Two mechanisms exist to maintain a list of network interface information.
@@ -458,7 +454,33 @@ impl InterfaceManagerWorker {
         });
         drop(database);
 
-        // TODO Notify
+        self.subscribers.write().await.retain(|subscriber| {
+            for message in notify_deleted_links.iter() {
+                match subscriber.try_send(NetworkStatusUpdate::Link(message.get_status().clone())) {
+                    Ok(_) => (),
+                    Err(_) => return false,
+                }
+            }
+            for message in notify_links.iter() {
+                match subscriber.try_send(NetworkStatusUpdate::Link(message.get_status().clone())) {
+                    Ok(_) => (),
+                    Err(_) => return false,
+                }
+            }
+            for message in notify_deleted_interfaces.iter() {
+                match subscriber.try_send(NetworkStatusUpdate::Interface(message.get_status().clone())) {
+                    Ok(_) => (),
+                    Err(_) => return false,
+                }
+            }
+            for message in notify_interfaces.iter() {
+                match subscriber.try_send(NetworkStatusUpdate::Interface(message.get_status().clone())) {
+                    Ok(_) => (),
+                    Err(_) => return false,
+                }
+            }
+            true
+        });
 
         Ok(())
     }

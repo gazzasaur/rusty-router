@@ -155,5 +155,12 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
         println!();
     };
 
-    Ok(())
+    let (sender, mut receiver) = tokio::sync::mpsc::channel(100);
+    nl.subscribe(sender).await;
+
+    loop {
+        if let Some(data) = receiver.recv().await {
+            println!("{:?}", data);
+        }
+    }
 }

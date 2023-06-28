@@ -9,6 +9,7 @@ rusty-router-common = { path = "../rusty-router-common" }
 
 uuid = { workspace = true }
 serde = { workspace = true }
+tokio = { workspace = true }
 thiserror = { workspace = true }
 serde_json = { workspace = true }
 async-trait = { workspace = true }
