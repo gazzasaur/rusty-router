@@ -10,6 +10,7 @@ use std::collections::HashMap;
 use std::ops::Add;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use tokio::sync::mpsc::Sender;
 use std::time::Duration;
 
 use async_trait::async_trait;
@@ -30,6 +31,11 @@ use rusty_router_common::prelude::*;
 const ENTROPY_HOLD_PERIOD_SECONDS: u64 = 5;
 const ENTROPY_SCAN_PERIOD_SECONDS: u64 = 10;
 
+pub enum NetworkStatusUpdate {
+    Link(NetworkLinkStatus),
+    Interface(NetworkInterfaceStatus),
+}
+
 /**
  * Two mechanisms exist to maintain a list of network interface information.
  * A listener will subscribe to all networking events to ensure we have the latest information, but this can be lossy.
@@ -40,6 +46,7 @@ const ENTROPY_SCAN_PERIOD_SECONDS: u64 = 10;
 pub struct InterfaceManager {
     running: Arc<AtomicBool>,
     database: Arc<RwLock<InterfaceManagerDatabase>>,
+    subscribers: Arc<RwLock<Vec<Sender<NetworkLinkStatus>>>>,
 }
 impl InterfaceManager {
     pub async fn new(
@@ -48,9 +55,11 @@ impl InterfaceManager {
     ) -> Result<InterfaceManager> {
         let running = Arc::new(AtomicBool::new(true));
         let database = Arc::new(RwLock::new(InterfaceManagerDatabase::new()));
+        let subscribers = Arc::new(RwLock::new(Vec::new()));
         let interface_manaer = InterfaceManager {
             running: running.clone(),
             database: database.clone(),
+            subscribers: subscribers.clone(),
         };
 
         // Perform these operations are creating an interface manager to ensure running is set to faule upon failure.
