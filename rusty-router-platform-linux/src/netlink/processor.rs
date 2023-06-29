@@ -41,6 +41,11 @@ impl NetlinkMessageProcessor {
             }
         };
 
+        // TODO Figure out if I need to work with other families
+        if msg.header.interface_family != 0 {
+            return None
+        }
+
         let index = msg.header.index as u64;
         for attribute in msg.nlas.iter() {
             if let nlas::Nla::IfName(ifname) = attribute {

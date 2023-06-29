@@ -64,6 +64,7 @@ impl InterfaceManager {
             .create_socket(Box::new(InterfaceManagerNetlinkSocketListener::new(
                 netlink_message_processor.clone(),
                 database.clone(),
+                subscribers.clone(),
             )))
             .await?;
         InterfaceManagerWorker::start(
@@ -489,15 +490,18 @@ impl InterfaceManagerWorker {
 struct InterfaceManagerNetlinkSocketListener {
     database: Arc<RwLock<InterfaceManagerDatabase>>,
     netlink_message_processor: Arc<NetlinkMessageProcessor>,
+    subscribers: Arc<RwLock<Vec<Sender<NetworkStatusUpdate>>>>,
 }
 impl InterfaceManagerNetlinkSocketListener {
     pub fn new(
         netlink_message_processor: Arc<NetlinkMessageProcessor>,
         data: Arc<RwLock<InterfaceManagerDatabase>>,
+        subscribers: Arc<RwLock<Vec<Sender<NetworkStatusUpdate>>>>,
     ) -> InterfaceManagerNetlinkSocketListener {
         InterfaceManagerNetlinkSocketListener {
             netlink_message_processor,
             database: data,
+            subscribers
         }
     }
 }
@@ -535,6 +539,7 @@ impl NetlinkSocketListener for InterfaceManagerNetlinkSocketListener {
                             == link.get_status().get_device()
                     })
                     .into_iter()
+                    // TODO This could be IPv4 and IPv6 in the future
                     .for_each(|interface| {
                         let id = CanonicalNetworkId::new(
                             Some(index),
@@ -556,11 +561,24 @@ impl NetlinkSocketListener for InterfaceManagerNetlinkSocketListener {
                             ),
                         ));
                     });
-                updated_interface.iter().for_each(|interface| {
-                    database.set_interface_status_item(interface.clone());
-                });
 
-                // TODO Notify
+                self.subscribers.write().await.retain(|subscriber| {
+                    match subscriber.try_send(NetworkStatusUpdate::Link(link.get_status().clone())) {
+                        Ok(_) => (),
+                        Err(_) => return false,
+                    }
+                    true
+                });
+                for interface in updated_interface.iter() {
+                    database.set_interface_status_item(interface.clone());
+                    self.subscribers.write().await.retain(|subscriber| {
+                        match subscriber.try_send(NetworkStatusUpdate::Interface(interface.get_status().clone())) {
+                            Ok(_) => (),
+                            Err(_) => return false,
+                        }
+                        true
+                    });    
+                };
             }
         } else if let netlink_packet_core::NetlinkPayload::InnerMessage(
             netlink_packet_route::RtnlMessage::DelLink(_),
@@ -1864,6 +1882,7 @@ mod tests {
         let subject = InterfaceManagerNetlinkSocketListener::new(
             Arc::new(NetlinkMessageProcessor::new(config)),
             database.clone(),
+            Arc::new(RwLock::new(Vec::new())),
         );
         subject.message_received(netlink_message).await;
 
@@ -1958,6 +1977,7 @@ mod tests {
         let subject = InterfaceManagerNetlinkSocketListener::new(
             Arc::new(NetlinkMessageProcessor::new(config)),
             database.clone(),
+            Arc::new(RwLock::new(Vec::new())),
         );
         subject.message_received(netlink_message).await;
 
@@ -2048,6 +2068,7 @@ mod tests {
         let subject = InterfaceManagerNetlinkSocketListener::new(
             Arc::new(NetlinkMessageProcessor::new(config)),
             database.clone(),
+            Arc::new(RwLock::new(Vec::new())),
         );
         subject.message_received(netlink_message).await;
 
@@ -2136,6 +2157,7 @@ mod tests {
         let subject = InterfaceManagerNetlinkSocketListener::new(
             Arc::new(NetlinkMessageProcessor::new(config)),
             database.clone(),
+            Arc::new(RwLock::new(Vec::new())),
         );
         subject.message_received(netlink_message).await;
 
@@ -2232,6 +2254,7 @@ mod tests {
         let subject = InterfaceManagerNetlinkSocketListener::new(
             Arc::new(NetlinkMessageProcessor::new(config)),
             database.clone(),
+            Arc::new(RwLock::new(Vec::new())),
         );
         subject.message_received(netlink_message).await;
 
@@ -2322,6 +2345,7 @@ mod tests {
         let subject = InterfaceManagerNetlinkSocketListener::new(
             Arc::new(NetlinkMessageProcessor::new(config)),
             database.clone(),
+            Arc::new(RwLock::new(Vec::new())),
         );
         subject.message_received(netlink_message).await;
 
