@@ -25,7 +25,8 @@ impl TryFrom<&[u8]> for OspfHelloPacket {
         if length < 44 {
             return Err(ProtocolError::InvalidMinimumLength(PROTOCOL, 44, length as usize));
         }
-        
+
+        println!("Header {:?}", header);
 
         // Ok(OspfHelloPacket {
         //     header,

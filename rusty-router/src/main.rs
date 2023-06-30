@@ -1,6 +1,7 @@
 use async_trait::async_trait;
 use env_logger;
 use log::{error, warn};
+use rusty_router_proto_ospfv2::constants::OSPF_PROTOCOL_NUMBER;
 use std::error::Error;
 use std::sync::Arc;
 use std::collections::HashMap;
@@ -157,6 +158,8 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
 
     let (sender, mut receiver) = tokio::sync::mpsc::channel(100);
     nl.subscribe(sender).await;
+
+    let _connection = nl.connect_ipv4(&"Inside".into(), "0.0.0.0".parse()?, OSPF_PROTOCOL_NUMBER, vec!["224.0.0.5".parse()?], Box::from(Nih {})).await?;
 
     loop {
         if let Some(data) = receiver.recv().await {
