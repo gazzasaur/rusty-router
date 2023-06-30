@@ -189,7 +189,7 @@ impl IpV4HeaderBuilder {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct IpV4Header {
     version: IpVersion,
     internet_header_length: u8,

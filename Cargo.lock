@@ -811,6 +811,7 @@ dependencies = [
  "log",
  "rusty-router-model",
  "rusty-router-platform-linux",
+ "rusty-router-proto-ip",
  "rusty-router-proto-ospfv2",
  "serde_json",
  "tokio",

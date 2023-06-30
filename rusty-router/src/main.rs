@@ -5,6 +5,7 @@ use rusty_router_proto_ospfv2::constants::OSPF_PROTOCOL_NUMBER;
 use std::error::Error;
 use std::sync::Arc;
 use std::collections::HashMap;
+use std::convert::TryFrom;
 use rusty_router_model::{RustyRouter, NetworkEventHandler};
 
 struct Nih {
@@ -12,7 +13,18 @@ struct Nih {
 #[async_trait]
 impl NetworkEventHandler for Nih {
     async fn on_recv(&self, data: Vec<u8>) {
-        println!("BLAH {:?}", data);
+        let ip_header = match rusty_router_proto_ip::IpV4Header::try_from(&data[..]) {
+            Ok(header) => header,
+            Err(_) => return,
+        };
+        println!("IP Header: {:?}", ip_header);
+
+        let header_length = ip_header.get_internet_header_length() as usize * 4;
+        let ospf_header = match rusty_router_proto_ospfv2::packet::OspfHeader::try_from(&data[header_length..]) {
+            Ok(header) => header,
+            Err(_) => return,
+        };
+        println!("IP Header: {:?}", ospf_header);
     }
 
     async fn on_error(&self, message: String) {
