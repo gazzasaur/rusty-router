@@ -1,1 +1,1 @@
-pub const OSPF_PROTOCOL_NUMBER: u8 = 10u8;
+pub const OSPF_PROTOCOL_NUMBER: u8 = 89;
