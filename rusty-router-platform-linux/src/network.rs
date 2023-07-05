@@ -68,7 +68,7 @@ impl LinuxInetPacketNetworkInterface {
             nix::sys::socket::setsockopt(
                 sock.get(),
                 nix::sys::socket::sockopt::IpAddMembership,
-                &IpMembershipRequest::new(multicast_group, None),
+                &IpMembershipRequest::new(multicast_group, Some(source)),
             )
             .map_err(|e| Error::System(format!("{:?}", e)))?;
         }

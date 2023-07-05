@@ -1,5 +1,6 @@
 use std::convert::TryFrom;
 use std::convert::TryInto;
+use std::net::Ipv4Addr;
 use rusty_router_proto_common::prelude::*;
 use rusty_router_proto_common::from_be_bytes;
 
@@ -95,8 +96,8 @@ pub struct OspfHeader {
     version: OspfVersion,
     message_type: OspfMessageType,
     packet_length: u16,
-    router_id: u32,
-    area_id: u32,
+    router_id: Ipv4Addr,
+    area_id: Ipv4Addr,
     checksum: u16,
     authentication_type: OspfAuthenticationType,
     authentication_header: OspfAuthenticationHeader,
@@ -114,11 +115,11 @@ impl OspfHeader {
         self.packet_length
     }
 
-    pub fn get_router_id(&self) -> u32 {
+    pub fn get_router_id(&self) -> Ipv4Addr {
         self.router_id
     }
 
-    pub fn get_area_id(&self) -> u32 {
+    pub fn get_area_id(&self) -> Ipv4Addr {
         self.area_id
     }
 
@@ -185,8 +186,8 @@ impl TryFrom<&[u8]> for OspfHeader {
         Ok(OspfHeader {
             version: OspfVersion::try_from(data[0])?,
             message_type: OspfMessageType::try_from(data[1])?,
-            router_id: from_be_bytes!(u32, PROTOCOL, data[4..8]),
-            area_id: from_be_bytes!(u32, PROTOCOL, data[8..12]),
+            router_id: Ipv4Addr::from(from_be_bytes!(u32, PROTOCOL, data[4..8])),
+            area_id: Ipv4Addr::from(from_be_bytes!(u32, PROTOCOL, data[8..12])),
             authentication_header: OspfAuthenticationHeader::new(&authentication_type, data[16..24].try_into().map_err(|_| ProtocolError::ConversionError(PROTOCOL, file!(), line!()))?)?,
             authentication_type,
             packet_length,
@@ -283,8 +284,8 @@ mod tests {
         assert_eq!(subject.get_version(), &OspfVersion::V2);
         assert_eq!(subject.get_type(), &OspfMessageType::Hello);
         assert_eq!(subject.get_length(), 24);
-        assert_eq!(subject.get_router_id(), 2130706433);
-        assert_eq!(subject.get_area_id(), 1);
+        assert_eq!(subject.get_router_id(), Ipv4Addr::from(2130706433));
+        assert_eq!(subject.get_area_id(), Ipv4Addr::from(1));
         assert_eq!(subject.get_checksum(), 32484);
         assert_eq!(subject.get_authentication_type(), &OspfAuthenticationType::Null);
         assert_eq!(subject.get_authentication_header(), &OspfAuthenticationHeader::Null);
@@ -305,8 +306,8 @@ mod tests {
         assert_eq!(subject.get_version(), &OspfVersion::V2);
         assert_eq!(subject.get_type(), &OspfMessageType::Hello);
         assert_eq!(subject.get_length(), 24);
-        assert_eq!(subject.get_router_id(), 2130706433);
-        assert_eq!(subject.get_area_id(), 1);
+        assert_eq!(subject.get_router_id(), Ipv4Addr::from(2130706433));
+        assert_eq!(subject.get_area_id(), Ipv4Addr::from(1));
         assert_eq!(subject.get_checksum(), 32484);
         assert_eq!(subject.get_authentication_type(), &OspfAuthenticationType::Null);
         assert_eq!(subject.get_authentication_header(), &OspfAuthenticationHeader::Null);
@@ -360,8 +361,8 @@ mod tests {
         assert_eq!(subject.get_version(), &OspfVersion::V2);
         assert_eq!(subject.get_type(), &OspfMessageType::Hello);
         assert_eq!(subject.get_length(), 24);
-        assert_eq!(subject.get_router_id(), 2130706433);
-        assert_eq!(subject.get_area_id(), 1);
+        assert_eq!(subject.get_router_id(), Ipv4Addr::from(2130706433));
+        assert_eq!(subject.get_area_id(), Ipv4Addr::from(1));
         assert_eq!(subject.get_checksum(), 32483);
         assert_eq!(subject.get_authentication_type(), &OspfAuthenticationType::SimplePassword);
         assert_eq!(subject.get_authentication_header(), &OspfAuthenticationHeader::SimplePassword([10, 11, 12, 13, 14, 15, 16, 17]));
@@ -381,8 +382,8 @@ mod tests {
         assert_eq!(subject.get_version(), &OspfVersion::V2);
         assert_eq!(subject.get_type(), &OspfMessageType::Hello);
         assert_eq!(subject.get_length(), 24);
-        assert_eq!(subject.get_router_id(), 2130706433);
-        assert_eq!(subject.get_area_id(), 1);
+        assert_eq!(subject.get_router_id(), Ipv4Addr::from(2130706433));
+        assert_eq!(subject.get_area_id(), Ipv4Addr::from(1));
         assert_eq!(subject.get_checksum(), 0);
         assert_eq!(subject.get_authentication_type(), &OspfAuthenticationType::CryptographicAuthentication);
         assert_eq!(subject.get_authentication_header(), &OspfAuthenticationHeader::CryptographicAuthentication {
