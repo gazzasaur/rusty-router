@@ -46,6 +46,15 @@ pub enum OspfAuthenticationType {
     CryptographicAuthentication, // 2
     // Others are available assigned by IANA but are outside the scope of the RFC
 }
+impl From<&OspfAuthenticationType> for u16 {
+    fn from(authentication_type: &OspfAuthenticationType) -> Self {
+        match authentication_type {
+            &OspfAuthenticationType::Null => 0,
+            &OspfAuthenticationType::SimplePassword => 1,
+            &OspfAuthenticationType::CryptographicAuthentication => 2,
+        }
+    }
+}
 impl TryFrom<u16> for OspfAuthenticationType {
     type Error = ProtocolError;
 

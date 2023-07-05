@@ -10,6 +10,56 @@ use rand::thread_rng;
 
 pub const IP_V4_PROTO: &'static str = "IPv4";
 
+#[derive(Debug)]
+pub struct Ipv4Netmask {
+    prefix_length: u32
+}
+impl Ipv4Netmask {
+    pub fn new(netmask_number: u32) -> Ipv4Netmask {
+        let prefix_length = match netmask_number {
+            0x00000000u32 => 0u32,
+            0x80000000u32 => 1u32,
+            0xC0000000u32 => 2u32,
+            0xE0000000u32 => 3u32,
+            0xF0000000u32 => 4u32,
+            0xF8000000u32 => 5u32,
+            0xFC000000u32 => 6u32,
+            0xFE000000u32 => 7u32,
+            0xFF000000u32 => 8u32,
+            0xFF800000u32 => 9u32,
+            0xFFC00000u32 => 10u32,
+            0xFFE00000u32 => 11u32,
+            0xFFF00000u32 => 12u32,
+            0xFFF80000u32 => 13u32,
+            0xFFFC0000u32 => 14u32,
+            0xFFFE0000u32 => 15u32,
+            0xFFFF0000u32 => 16u32,
+            0xFFFF8000u32 => 17u32,
+            0xFFFFC000u32 => 18u32,
+            0xFFFFE000u32 => 19u32,
+            0xFFFFF000u32 => 20u32,
+            0xFFFFF800u32 => 21u32,
+            0xFFFFFC00u32 => 22u32,
+            0xFFFFFE00u32 => 23u32,
+            0xFFFFFF00u32 => 24u32,
+            0xFFFFFF80u32 => 25u32,
+            0xFFFFFFC0u32 => 26u32,
+            0xFFFFFFE0u32 => 27u32,
+            0xFFFFFFF0u32 => 28u32,
+            0xFFFFFFF8u32 => 29u32,
+            0xFFFFFFFCu32 => 30u32,
+            0xFFFFFFFEu32 => 31u32,
+            0xFFFFFFFFu32 => 32u32,
+            _ => 0u32,
+        };
+        Ipv4Netmask { prefix_length }
+    }
+
+    pub fn prefix_length(&self) -> u32 {
+        self.prefix_length
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct IpVersion {
     version: u8,

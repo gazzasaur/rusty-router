@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 use env_logger;
 use log::{error, warn};
-use rusty_router_proto_ospfv2::constants::OSPF_PROTOCOL_NUMBER;
+use rusty_router_proto_ospfv2::{constants::OSPF_PROTOCOL_NUMBER};
 use std::error::Error;
 use std::sync::Arc;
 use std::collections::HashMap;
@@ -17,14 +17,20 @@ impl NetworkEventHandler for Nih {
             Ok(header) => header,
             Err(_) => return,
         };
+        let header_length = ip_header.get_internet_header_length() as usize * 4;
         println!("IP Header: {:?}", ip_header);
 
-        let header_length = ip_header.get_internet_header_length() as usize * 4;
         let ospf_header = match rusty_router_proto_ospfv2::packet::OspfHeader::try_from(&data[header_length..]) {
             Ok(header) => header,
             Err(_) => return,
         };
-        println!("IP Header: {:?}", ospf_header);
+        println!("OSPFv2 Header: {:?}", ospf_header);
+
+        let ospf_packet = match rusty_router_proto_ospfv2::packet::OspfHelloPacket::try_from(&data[header_length..]) {
+            Ok(ospf_packet) => ospf_packet,
+            Err(_) => return,
+        };
+        println!("OSPFv2 Packet: {:?}", ospf_packet);
     }
 
     async fn on_error(&self, message: String) {
