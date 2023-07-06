@@ -1,14 +1,37 @@
 use async_trait::async_trait;
 use env_logger;
 use log::{error, warn};
+use rusty_router_proto_ospfv2::packet::OspfHelloPacket;
 use rusty_router_proto_ospfv2::{constants::OSPF_PROTOCOL_NUMBER};
-use std::error::Error;
+use tokio::sync::Mutex;
+use tokio::sync::mpsc::{Sender, Receiver};
+use std::{error::Error, net::Ipv4Addr};
 use std::sync::Arc;
 use std::collections::HashMap;
 use std::convert::TryFrom;
-use rusty_router_model::{RustyRouter, NetworkEventHandler};
+use rusty_router_model::{RustyRouter, NetworkEventHandler, InetPacketNetworkInterface, RustyRouterInstance};
+
+struct Ni {
+    receiver: Receiver<OspfHelloPacket>,
+    _connection: Box<dyn InetPacketNetworkInterface + Send + Sync>,
+}
+impl Ni {
+    pub async fn new(instance: Box<dyn RustyRouterInstance>, interface_name: &String, local_address: Ipv4Addr) -> Result<Self, Box<dyn Error + Send + Sync>> {
+        let (sender, receiver) = tokio::sync::mpsc::channel(100);
+        let nih = Nih { sender: Arc::new(Mutex::new(Some(sender))) };
+        let connection = instance.connect_ipv4(interface_name, local_address, OSPF_PROTOCOL_NUMBER, vec!["224.0.0.5".parse()?], Box::from(nih)).await?;
+        Ok(Self { receiver, _connection: connection })
+    }
+
+    pub async fn process(&mut self) {
+        if let Some(packet) = self.receiver.recv().await {
+            println!("P {:?}", packet);
+        }
+    }
+}
 
 struct Nih {
+    sender: Arc<Mutex<Option<Sender<OspfHelloPacket>>>>,
 }
 #[async_trait]
 impl NetworkEventHandler for Nih {
@@ -31,10 +54,14 @@ impl NetworkEventHandler for Nih {
             Err(_) => return,
         };
         println!("OSPFv2 Packet: {:?}", ospf_packet);
+
+        self.sender.lock().await.as_mut().filter(|sender| {
+            sender.try_send(ospf_packet).is_ok()
+        });
     }
 
     async fn on_error(&self, message: String) {
-        println!("BLAH {:?}", message);
+        error!("Error {:?}", message);
     }
 }
 
@@ -98,8 +125,8 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
     );
 
     let socket_factory = rusty_router_platform_linux::netlink::DefaultNetlinkSocketFactory::new();
-    let nl = rusty_router_platform_linux::LinuxRustyRouter::new(config, Arc::new(socket_factory)).await?;
-    let nl = nl.fetch_instance().await?;
+    let nlp = rusty_router_platform_linux::LinuxRustyRouter::new(config, Arc::new(socket_factory)).await?;
+    let nl = nlp.fetch_instance().await?;
 
     if let Ok(mut interfaces) = nl.list_network_links().await {
         interfaces.sort_by(|a, b| {
@@ -174,14 +201,15 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
         println!();
     };
 
-    let (sender, mut receiver) = tokio::sync::mpsc::channel(100);
+    let (sender, mut _receiver) = tokio::sync::mpsc::channel(100);
     nl.subscribe(sender).await;
 
-    let _connection = nl.connect_ipv4(&"Inside".into(), "0.0.0.0".parse()?, OSPF_PROTOCOL_NUMBER, vec!["224.0.0.5".parse()?], Box::from(Nih {})).await?;
+    let mut n = Ni::new(nlp.fetch_instance().await?, &"Inside".into(), "172.16.10.2".parse()?).await?;
 
     loop {
-        if let Some(data) = receiver.recv().await {
-            println!("{:?}", data);
-        }
+        n.process().await;
+        // if let Some(data) = receiver.recv().await {
+        //     println!("{:?}", data);
+        // }
     }
 }
