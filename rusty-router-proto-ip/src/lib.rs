@@ -10,9 +10,10 @@ use rand::thread_rng;
 
 pub const IP_V4_PROTO: &'static str = "IPv4";
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct Ipv4Netmask {
-    prefix_length: u32
+    prefix_length: u32,
+    netmask_number: u32,
 }
 impl Ipv4Netmask {
     pub fn new(netmask_number: u32) -> Ipv4Netmask {
@@ -52,11 +53,15 @@ impl Ipv4Netmask {
             0xFFFFFFFFu32 => 32u32,
             _ => 0u32,
         };
-        Ipv4Netmask { prefix_length }
+        Ipv4Netmask { prefix_length, netmask_number }
     }
 
     pub fn prefix_length(&self) -> u32 {
         self.prefix_length
+    }
+
+    pub fn netmask_number(&self) -> u32 {
+        self.netmask_number
     }
 }
 
