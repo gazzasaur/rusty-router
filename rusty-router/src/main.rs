@@ -5,18 +5,19 @@ use rusty_router_model::{
     InetPacketNetworkInterface, NetworkEventHandler, RustyRouter, RustyRouterInstance,
 };
 use rusty_router_proto_common::prelude::ProtocolError;
-use rusty_router_proto_ip::Ipv4Netmask;
+use rusty_router_proto_ip::{IpV4Header, Ipv4Netmask};
 use rusty_router_proto_ospfv2::constants::OSPF_PROTOCOL_NUMBER;
-use rusty_router_proto_ospfv2::packet::{OspfHelloPacket, OspfHelloPacketBuilder};
+use rusty_router_proto_ospfv2::packet::OspfHelloPacketBuilder;
 use std::collections::HashMap;
 use std::convert::TryFrom;
+use std::str::FromStr;
 use std::sync::Arc;
 use std::{error::Error, net::Ipv4Addr};
 use tokio::sync::mpsc::{Receiver, Sender};
 use tokio::sync::Mutex;
 
 struct Ni {
-    receiver: Receiver<OspfHelloPacket>,
+    receiver: Receiver<Vec<u8>>,
     connection: Box<dyn InetPacketNetworkInterface + Send + Sync>,
 }
 impl Ni {
@@ -45,93 +46,56 @@ impl Ni {
     }
 
     pub async fn process(&mut self) {
-        if let Some(packet) = self.receiver.recv().await {
-            if let Ok(response) = OspfHelloPacketBuilder::new(
-                match "2.2.2.2".parse() {
-                    Ok(p) => p,
-                    _ => return,
-                },
-                match "0.0.0.0".parse() {
-                    Ok(p) => p,
-                    _ => return,
-                },
+        let _: Result<(), Box<dyn Error>> = async {
+            let packet = if let Some(packet) = self.receiver.recv().await {
+                packet
+            } else {
+                return Ok(());
+            };
+
+            let ip = IpV4Header::try_from(&packet[..])?;
+            if ip.get_source_address() == Ipv4Addr::from_str("172.16.10.2")? {
+                return Ok(());
+            }
+
+            let response = OspfHelloPacketBuilder::new(
+                "2.2.2.2".parse()?,
+                "0.0.0.0".parse()?,
                 Ipv4Netmask::new(4294967292),
                 10,
                 0,
                 0,
                 40,
-                match "1.1.1.1".parse() {
-                    Ok(p) => p,
-                    _ => return,
-                },
-                match "0.0.0.0".parse() {
-                    Ok(p) => p,
-                    _ => return,
-                },
-                vec![match "1.1.1.1".parse() {
-                    Ok(p) => p,
-                    _ => return,
-                }],
+                "1.1.1.1".parse()?,
+                "0.0.0.0".parse()?,
+                vec!["1.1.1.1".parse()?],
             )
-            .build()
-            {
-                if let Err(_) = self
-                    .connection
-                    .send(
-                        match "225.0.0.5".parse() {
-                            Ok(p) => p,
-                            _ => return,
-                        },
-                        &match Result::<Vec<u8>, ProtocolError>::from(&response) {
-                            Ok(r) => r,
-                            _ => return,
-                        },
-                    )
-                    .await
-                {};
-                ()
-            } else {
-                ()
-            };
+            .build()?;
 
-            println!("P {:?}", packet);
+            self.connection
+                .send(
+                    "224.0.0.5".parse()?,
+                    &Result::<Vec<u8>, ProtocolError>::from(&response)?,
+                )
+                .await?;
+
+            Ok(())
         }
+        .await;
     }
 }
 
 struct Nih {
-    sender: Arc<Mutex<Option<Sender<OspfHelloPacket>>>>,
+    sender: Arc<Mutex<Option<Sender<Vec<u8>>>>>,
 }
 #[async_trait]
 impl NetworkEventHandler for Nih {
     async fn on_recv(&self, data: Vec<u8>) {
-        let ip_header = match rusty_router_proto_ip::IpV4Header::try_from(&data[..]) {
-            Ok(header) => header,
-            Err(_) => return,
-        };
-        let header_length = ip_header.get_internet_header_length() as usize * 4;
-        println!("IP Header: {:?}", ip_header);
-
-        let ospf_header =
-            match rusty_router_proto_ospfv2::packet::OspfHeader::try_from(&data[header_length..]) {
-                Ok(header) => header,
-                Err(_) => return,
-            };
-        println!("OSPFv2 Header: {:?}", ospf_header);
-
-        let ospf_packet = match rusty_router_proto_ospfv2::packet::OspfHelloPacket::try_from(
-            &data[header_length..],
-        ) {
-            Ok(ospf_packet) => ospf_packet,
-            Err(_) => return,
-        };
-        println!("OSPFv2 Packet: {:?}", ospf_packet);
-
         self.sender
             .lock()
             .await
             .as_mut()
-            .filter(|sender| sender.try_send(ospf_packet).is_ok());
+            .filter(|sender| sender.try_send(data).is_ok());
     }
 
     async fn on_error(&self, message: String) {
@@ -178,7 +142,7 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
             (
                 "iface0".to_string(),
                 rusty_router_model::NetworkLink::new(
-                    "eth0".to_string(),
+                    "vlan.10".to_string(),
                     rusty_router_model::NetworkLinkType::GenericInterface,
                 ),
             ),
