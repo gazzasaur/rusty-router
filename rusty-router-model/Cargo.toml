@@ -5,7 +5,7 @@ authors = ["gazzasaur"]
 edition = "2018"
 
 [dependencies]
-rusty-router-common = { path = "../rusty-router-common" }
+rusty-router-common = { workspace = true }
 
 uuid = { workspace = true }
 serde = { workspace = true }

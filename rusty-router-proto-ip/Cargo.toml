@@ -4,6 +4,6 @@ version = "0.1.0"
 edition = "2018"
 
 [dependencies]
-rusty-router-proto-common = { path = "../rusty-router-proto-common" }
+rusty-router-proto-common = { workspace = true }
 
 rand = { workspace = true }

@@ -4,5 +4,5 @@ version = "0.1.0"
 edition = "2018"
 
 [dependencies]
-rusty-router-proto-ip = { path = "../rusty-router-proto-ip" }
-rusty-router-proto-common = { path = "../rusty-router-proto-common" }
+rusty-router-proto-ip = { workspace = true }
+rusty-router-proto-common = { workspace = true }

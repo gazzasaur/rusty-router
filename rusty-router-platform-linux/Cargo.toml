@@ -5,9 +5,9 @@ authors = ["gazzasaur"]
 edition = "2018"
 
 [dependencies]
+rusty-router-model = { workspace = true }
 rusty-router-common = { workspace = true }
-rusty-router-model = { path = "../rusty-router-model" }
-rusty-router-proto-ip = { path = "../rusty-router-proto-ip" }
+rusty-router-proto-ip = { workspace = true }
 
 log = { workspace = true }
 rand = { workspace = true }
@@ -16,12 +16,11 @@ chrono = { workspace = true }
 thiserror = { workspace = true }
 async-trait = { workspace = true }
 
-libc = "0"
-rtnetlink = "0"
-netlink-packet-core = "0"
-netlink-packet-route = "0"
-
 nix = { workspace = true }
+libc = { workspace = true }
+rtnetlink = { workspace = true }
+netlink-packet-core = { workspace = true }
+netlink-packet-route = { workspace = true }
 netlink-sys = { version = "0", features = ["tokio_socket"] }
 
 [dev-dependencies]

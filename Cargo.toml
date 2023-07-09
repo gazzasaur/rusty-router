@@ -13,7 +13,12 @@ members = [
 ]
 
 [workspace.dependencies]
+rusty-router-model = { path = "./rusty-router-model" }
 rusty-router-common = { path = "./rusty-router-common" }
+rusty-router-proto-ip = { path = "./rusty-router-proto-ip" }
+rusty-router-proto-common = { path = "./rusty-router-proto-common" }
+rusty-router-proto-ospfv2 = { path = "./rusty-router-proto-ospfv2" }
+rusty-router-platform-linux = { path = "./rusty-router-platform-linux" }
 
 log = "0"
 nix = "0"
@@ -30,3 +35,8 @@ anyhow = "1"
 mockall = "0"
 tokio-test = "0"
 lazy_static = "1"
+
+libc = "0"
+rtnetlink = "0"
+netlink-packet-core = "0"
+netlink-packet-route = "0"
