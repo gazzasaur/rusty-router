@@ -10,13 +10,13 @@ use rusty_router_proto_ospfv2::constants::OSPF_PROTOCOL_NUMBER;
 use rusty_router_proto_ospfv2::packet::OspfHelloPacketBuilder;
 use std::collections::HashMap;
 use std::convert::TryFrom;
-use std::str::FromStr;
 use std::sync::Arc;
 use std::{error::Error, net::Ipv4Addr};
 use tokio::sync::mpsc::{Receiver, Sender};
 use tokio::sync::Mutex;
 
 struct Ni {
+    local_address: Ipv4Addr,
     receiver: Receiver<Vec<u8>>,
     connection: Box<dyn InetPacketNetworkInterface + Send + Sync>,
 }
@@ -40,6 +40,7 @@ impl Ni {
             )
             .await?;
         Ok(Self {
+            local_address,
             receiver,
             connection,
         })
@@ -54,7 +55,7 @@ impl Ni {
             };
 
             let ip = IpV4Header::try_from(&packet[..])?;
-            if ip.get_source_address() == Ipv4Addr::from_str("172.16.10.2")? {
+            if ip.get_source_address() == self.local_address {
                 return Ok(());
             }
 
@@ -78,7 +79,6 @@ impl Ni {
                     &Result::<Vec<u8>, ProtocolError>::from(&response)?,
                 )
                 .await?;
-
             Ok(())
         }
         .await;

@@ -3,12 +3,8 @@ use log::{error, warn};
 use nix::sys::epoll::{
     epoll_create1, epoll_ctl, epoll_wait, EpollCreateFlags, EpollEvent, EpollFlags, EpollOp,
 };
-use nix::sys::socket::MsgFlags;
-use nix::{
-    errno::Errno,
-    sys::socket::{InetAddr, IpAddr, IpMembershipRequest, SockAddr},
-    unistd::close,
-};
+use nix::sys::socket::{MsgFlags, SockaddrIn};
+use nix::{errno::Errno, sys::socket::IpMembershipRequest, unistd::close};
 use rusty_router_common::prelude::*;
 use rusty_router_model::{InetPacketNetworkInterface, NetworkEventHandler};
 use rusty_router_proto_ip::IpV4HeaderBuilder;
@@ -39,6 +35,50 @@ impl nix::sys::socket::SetSockOpt for IncludeHeader {
     }
 }
 
+// Keeping this code around just in case. Bind to device does not consider device index.
+// All reference implementation appear to require the device index and name.
+//
+// The customer bind that include index is below. It can be re-instated (or not) upon futher testing.
+//
+// nix::sys::socket::setsockopt(
+//     sock.get(),
+//     BindToDeviceByName {},
+//     &network_device,
+// )
+// .map_err(|e| Error::System(format!("{:?}", e)))?;
+//
+// ioctl_read_bad!(fetch_device_index, libc::SIOCGIFINDEX, libc::ifreq);
+// #[derive(Clone)]
+// struct BindToDeviceByName {}
+// impl nix::sys::socket::SetSockOpt for BindToDeviceByName
+// {
+//     type Val = String;
+//     fn set(&self, fd: RawFd, interface_name: &String) -> std::result::Result<(), Errno> {
+//         unsafe {
+//             if !interface_name.is_ascii() || interface_name.len() > 15 {
+//                 return Err(Errno::EINVAL);
+//             }
+//             let mut ifname = [0i8; 16];
+//             interface_name.bytes().map(|c| c as i8).enumerate().for_each(|(i, c)| {
+//                 ifname[i] = c;
+//             });
+//             let mut ifr = libc::ifreq {
+//                 ifr_name: ifname,
+//                 ifr_ifru: __c_anonymous_ifr_ifru { ifru_ifindex: 0 },
+//             };
+//             fetch_device_index(fd, &mut ifr as *mut libc::ifreq)?;
+//             let res = libc::setsockopt(
+//                 fd,
+//                 libc::IPPROTO_IP,
+//                 libc::SO_BINDTODEVICE,
+//                 &ifr as *const libc::ifreq as *const c_void,
+//                 std::mem::size_of::<libc::ifreq>() as u32,
+//             );
+//             Errno::result(res).map(drop)
+//         }
+//     }
+// }
+
 pub struct LinuxInetPacketNetworkInterface {
     _ticket: PollerTicket, // Need to store this as it must have the same scope as the container.
     sock: Arc<AutoCloseFd>,
@@ -64,6 +104,8 @@ impl LinuxInetPacketNetworkInterface {
             })
             .map_err(|e| Error::System(format!("{:?}", e)))?,
         ));
+        nix::sys::socket::setsockopt(sock.get(), IncludeHeader {}, &(1 as i32))
+            .map_err(|e| Error::System(format!("{:?}", e)))?;
         for multicast_group in multicast_groups {
             nix::sys::socket::setsockopt(
                 sock.get(),
@@ -78,8 +120,6 @@ impl LinuxInetPacketNetworkInterface {
             &OsString::from(network_device),
         )
         .map_err(|e| Error::System(format!("{:?}", e)))?;
-        nix::sys::socket::setsockopt(sock.get(), IncludeHeader {}, &(1 as i32))
-            .map_err(|e| Error::System(format!("{:?}", e)))?;
 
         let real: Arc<Box<dyn PollerListener + Send + Sync>> = Arc::new(Box::new(
             LinuxInetPacketNetworkInterfacePollerListener::new(sock.clone(), handler).await?,
@@ -106,16 +146,19 @@ impl InetPacketNetworkInterface for LinuxInetPacketNetworkInterface {
         let mut packet = Vec::<u8>::from(&builder.build(data.len())?);
         packet.extend(data);
 
-        Ok(nix::sys::socket::sendto(
-            self.sock.get(),
-            &packet,
-            &SockAddr::Inet(InetAddr::new(
-                IpAddr::from_std(&std::net::IpAddr::V4(to)),
-                0,
-            )),
-            MsgFlags::empty(),
+        let source_octets = to.octets();
+        let sin = SockaddrIn::new(
+            source_octets[0],
+            source_octets[1],
+            source_octets[2],
+            source_octets[3],
+            0,
+        );
+
+        Ok(
+            nix::sys::socket::sendto(self.sock.get(), &packet, &sin, MsgFlags::empty())
+                .map_err(|e| Error::System(format!("{:?}", e)))?,
         )
-        .map_err(|e| Error::System(format!("{:?}", e)))?)
     }
 }
 pub struct LinuxInetPacketNetworkInterfacePollerListener {
