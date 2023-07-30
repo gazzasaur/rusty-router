@@ -207,7 +207,7 @@ impl DefaultNetlinkSocket {
                     .map(|sequence_number| packet_sequence_number == sequence_number)
                     .unwrap_or(true)
                 {
-                    if rx_packet.payload == netlink_packet_core::NetlinkPayload::Done {
+                    if let netlink_packet_core::NetlinkPayload::Done(_) = rx_packet.payload {
                         return Ok(RecvState::Received);
                     }
                     callback(rx_packet);
